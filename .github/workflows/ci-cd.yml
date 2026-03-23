@@ -83,10 +83,12 @@ jobs:
       - run: pnpm --filter frontend run build
       - name: CDK synth (dev)
         if: github.event_name == 'pull_request'
-        run: pnpm --filter infra run synth -- -c stageName=dev
+        working-directory: infra
+        run: npx cdk synth -c stageName=dev
       - name: CDK synth (prod)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: pnpm --filter infra run synth -- -c stageName=prod
+        working-directory: infra
+        run: npx cdk synth -c stageName=prod
 
   # ──────────────────────────────────────────────
   # Deploy DEV (PR from dev → main)
@@ -121,12 +123,8 @@ jobs:
 
       # ── Deploy infra first (creates all AWS resources) ──
       - name: Deploy CDK stacks
-        run: >
-          pnpm --filter infra run deploy --
-          -c stageName=dev
-          -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }}
-          -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }}
-          --require-approval never
+        working-directory: infra
+        run: npx cdk deploy --all -c stageName=dev -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} --require-approval never
 
       # ── Fetch CDK outputs (Cognito IDs, table name, etc.) ──
       - name: Fetch stack outputs
@@ -231,12 +229,8 @@ jobs:
 
       # ── Deploy infra first ──
       - name: Deploy CDK stacks
-        run: >
-          pnpm --filter infra run deploy --
-          -c stageName=prod
-          -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }}
-          -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }}
-          --require-approval never
+        working-directory: infra
+        run: npx cdk deploy --all -c stageName=prod -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} --require-approval never
 
       # ── Fetch CDK outputs ──
       - name: Fetch stack outputs
