@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Versa - a **multi-tenant** team management platform for teams of all sports. Multiple organizations with multip teams can operate independently on the platform (multi-tenant). We offer all your team management needs (team, roster, groups, tasks, communications, etc.) in one single platform. We integrate easily and leverage plugins/apps for calendaring, chat, etc.
+Switchback - a **multi-tenant** team management platform for teams of all sports. Multiple organizations with multip teams can operate independently on the platform (multi-tenant). We offer all your team management needs (team, roster, groups, tasks, communications, etc.) in one single platform. We integrate easily and leverage plugins/apps for calendaring, chat, etc.
 
 ## Monorepo Structure
 
@@ -14,7 +14,6 @@ Versa - a **multi-tenant** team management platform for teams of all sports. Mul
 ├── infra/       # AWS CDK stacks - Infrastructure including EventBridge, DynamoDB, SES, Cognito, etc.
 ├── docs/        # Documentation
 ├── scripts/     # Local dev scripts (seed, init DB)
-└── plop-templates/  # Code generators
 ```
 
 ## Common Commands
@@ -72,7 +71,7 @@ All data is scoped by `organizationId`. The `Organization` entity is the top-lev
 - Lookup entities use `organizationId = "GLOBAL"` for platform defaults
 - Auth: `organizationId` is injected into Cognito access tokens via Pre Token Generation Lambda trigger
 - Middleware: `orgContextMiddleware` extracts `organizationId` from authorizer context and attaches to request; org management routes use `superAdminMiddleware` (no org scoping)
-- Secrets: Org-sensitive config (Stripe keys, etc.) stored in AWS Secrets Manager at `versa/org/{organizationId}/secrets`
+- Secrets: Org-sensitive config (Stripe keys, etc.) stored in AWS Secrets Manager at `squadlogic/org/{organizationId}/secrets`
 
 ## Entity Model
 
@@ -87,7 +86,7 @@ TODO: document
 - Conventional commits (commitlint + Commitizen)
 - ESLint flat config in each workspace
 - Vitest for backend + frontend tests
-- Jest for CDK infrastructure tests
+- Jest for CDK infrastructure testsf
 - Must have at least 90% code coverage
 - CI/CD runs lint, test, etc.
 

@@ -1,0 +1,39 @@
+{
+  "name": "squadlogic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SquadLogic - a multi-tenant team management platform",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter frontend dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "commit": "cz",
+    "generate": "plop",
+    "db:start": "docker compose up -d dynamodb-local",
+    "dev:local": "bash scripts/dev-local.sh",
+    "dev:stop": "bash scripts/dev-stop.sh",
+    "dev:restart": "bash scripts/dev-restart.sh",
+    "dev:teardown": "bash scripts/dev-teardown.sh",
+    "cy:run": "cypress run",
+    "cy:open": "cypress open"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.750.0",
+    "@aws-sdk/lib-dynamodb": "^3.750.0",
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "commitizen": "^4.3.1",
+    "cypress": "^15.12.0",
+    "cz-conventional-changelog": "^3.3.0",
+    "husky": "^9.1.7",
+    "plop": "^4.0.1",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

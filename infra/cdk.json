@@ -1,0 +1,22 @@
+{
+  "app": "npx tsx bin/app.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "**/*.d.ts",
+      "**/*.js",
+      "tsconfig.json",
+      "package*.json",
+      "jest.config.*",
+      "node_modules",
+      "test",
+      "dist",
+      "cdk.out"
+    ]
+  },
+  "context": {
+    "stageName": "dev"
+  }
+}

@@ -1,0 +1,34 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+.next
+out
+cdk.out
+
+# Environment files
+.env*
+
+# OS files
+.DS_Store
+
+# Test coverage
+coverage
+
+# Logs
+*.log
+
+# Local DynamoDB data
+docker/dynamodb-data
+
+# CDK context
+cdk.context.json
+
+# Local dev PIDs
+.dev-pids
+
+# Cypress
+cypress/videos
+cypress/screenshots
+cypress/downloads
