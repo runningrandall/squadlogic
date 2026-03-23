@@ -163,7 +163,7 @@ export class AuthStack extends cdk.Stack {
       {
         functionName: `TeamManager-PreTokenGen-${stageName}`,
         runtime: lambda.Runtime.NODEJS_22_X,
-        entry: path.join(__dirname, 'lambdas', 'pre-token-generation.ts'),
+        entry: path.resolve('lib', 'lambdas', 'pre-token-generation.ts'),
         handler: 'handler',
         timeout: cdk.Duration.seconds(5),
         memorySize: 128,
