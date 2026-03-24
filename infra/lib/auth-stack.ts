@@ -213,6 +213,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
                 status: { type: 'String', required: true },
               },
             },
@@ -222,6 +223,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Organization'],
@@ -251,6 +253,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Organization'],
@@ -260,6 +263,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Organization'],
