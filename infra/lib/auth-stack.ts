@@ -199,12 +199,20 @@ export class AuthStack extends cdk.Stack {
             memberOfTypes: ['Role'],
           },
           Role: {
+            shape: {
+              type: 'Record',
+              attributes: {
+                organizationId: { type: 'String', required: false },
+                teamId: { type: 'String', required: false },
+              },
+            },
             memberOfTypes: ['Role'],
           },
           Organization: {
             shape: {
               type: 'Record',
               attributes: {
+                organizationId: { type: 'String', required: true },
                 status: { type: 'String', required: true },
               },
             },
