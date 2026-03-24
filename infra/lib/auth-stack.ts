@@ -192,7 +192,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
-                teamId: { type: 'String', required: false },
+                teamId: { type: 'String', required: true },
                 email: { type: 'String', required: true },
               },
             },
@@ -202,8 +202,8 @@ export class AuthStack extends cdk.Stack {
             shape: {
               type: 'Record',
               attributes: {
-                organizationId: { type: 'String', required: false },
-                teamId: { type: 'String', required: false },
+                organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Role'],
@@ -231,7 +231,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
-                teamId: { type: 'String', required: false },
+                teamId: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Team', 'Organization'],
@@ -376,7 +376,7 @@ export class AuthStack extends cdk.Stack {
           description: 'TeamAdmin: all actions within own team',
           statement: [
             'permit (principal in SquadLogic::Role::"TeamAdmin", action, resource)',
-            'when { principal.organizationId == resource.organizationId && principal has teamId && resource has teamId && principal.teamId == resource.teamId };',
+            'when { principal.organizationId == resource.organizationId && principal.teamId == resource.teamId };',
           ].join('\n'),
         },
       },
@@ -390,7 +390,7 @@ export class AuthStack extends cdk.Stack {
           description: 'TeamManager: View, Create, Update within own team',
           statement: [
             'permit (principal in SquadLogic::Role::"TeamManager", action in [SquadLogic::Action::"View", SquadLogic::Action::"Create", SquadLogic::Action::"Update"], resource)',
-            'when { principal.organizationId == resource.organizationId && principal has teamId && resource has teamId && principal.teamId == resource.teamId };',
+            'when { principal.organizationId == resource.organizationId && principal.teamId == resource.teamId };',
           ].join('\n'),
         },
       },
@@ -404,7 +404,7 @@ export class AuthStack extends cdk.Stack {
           description: 'TeamUser: View within own team',
           statement: [
             'permit (principal in SquadLogic::Role::"TeamUser", action in [SquadLogic::Action::"View"], resource)',
-            'when { principal.organizationId == resource.organizationId && principal has teamId && resource has teamId && principal.teamId == resource.teamId };',
+            'when { principal.organizationId == resource.organizationId && principal.teamId == resource.teamId };',
           ].join('\n'),
         },
       },
@@ -418,7 +418,7 @@ export class AuthStack extends cdk.Stack {
           description: 'Athlete: View within own team',
           statement: [
             'permit (principal in SquadLogic::Role::"Athlete", action in [SquadLogic::Action::"View"], resource)',
-            'when { principal.organizationId == resource.organizationId && principal has teamId && resource has teamId && principal.teamId == resource.teamId };',
+            'when { principal.organizationId == resource.organizationId && principal.teamId == resource.teamId };',
           ].join('\n'),
         },
       },
