@@ -160,7 +160,11 @@ jobs:
             --stack-name TeamManager-Frontend-dev \
             --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
             --output text)
-          aws s3 sync frontend/out/ "s3://${BUCKET}" --delete
+          aws s3 sync frontend/.next/static/ "s3://${BUCKET}/_next/static/" --delete
+          if [ -d frontend/public ]; then
+            aws s3 sync frontend/public/ "s3://${BUCKET}/" --delete --exclude "_next/*"
+          fi
+          echo '<html><head><meta http-equiv="refresh" content="0;url=/dashboard"></head></html>' | aws s3 cp - "s3://${BUCKET}/index.html" --content-type "text/html"
 
           DOMAIN=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-dev \
@@ -266,7 +270,11 @@ jobs:
             --stack-name TeamManager-Frontend-prod \
             --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
             --output text)
-          aws s3 sync frontend/out/ "s3://${BUCKET}" --delete
+          aws s3 sync frontend/.next/static/ "s3://${BUCKET}/_next/static/" --delete
+          if [ -d frontend/public ]; then
+            aws s3 sync frontend/public/ "s3://${BUCKET}/" --delete --exclude "_next/*"
+          fi
+          echo '<html><head><meta http-equiv="refresh" content="0;url=/dashboard"></head></html>' | aws s3 cp - "s3://${BUCKET}/index.html" --content-type "text/html"
 
           DOMAIN=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-prod \
