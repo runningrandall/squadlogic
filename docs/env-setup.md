@@ -100,10 +100,10 @@ Configure in **Settings > Secrets and variables > Actions**.
 
 | Secret | Description | Example |
 |---|---|---|
-| `DEV_API_URL` | Backend API URL for dev | `https://api-dev.squadlogic.ai` |
-| `PROD_API_URL` | Backend API URL for prod | `https://api.squadlogic.ai` |
-| `DEV_REDIRECT_URL` | OAuth redirect URL for dev | `https://dev.squadlogic.ai/` |
-| `PROD_REDIRECT_URL` | OAuth redirect URL for prod | `https://app.squadlogic.ai/` |
+| `DEV_API_URL` | Backend API URL for dev | `https://api-dev.squadlogic.io` |
+| `PROD_API_URL` | Backend API URL for prod | `https://api.squadlogic.io` |
+| `DEV_REDIRECT_URL` | OAuth redirect URL for dev | `https://dev.squadlogic.io/` |
+| `PROD_REDIRECT_URL` | OAuth redirect URL for prod | `https://app.squadlogic.io/` |
 
 ### Optional (Google OAuth)
 

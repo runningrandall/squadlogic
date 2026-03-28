@@ -139,11 +139,12 @@ jobs:
           echo "USER_POOL_ID=$(get_output TeamManager-Auth-dev UserPoolId)" >> $GITHUB_OUTPUT
           echo "USER_POOL_CLIENT_ID=$(get_output TeamManager-Auth-dev UserPoolClientId)" >> $GITHUB_OUTPUT
           echo "COGNITO_DOMAIN=$(get_output TeamManager-Auth-dev UserPoolDomain)" >> $GITHUB_OUTPUT
+          echo "API_URL=$(get_output TeamManager-Infra-dev ApiUrl)" >> $GITHUB_OUTPUT
 
       # ── Build frontend with CDK outputs injected ──
       - name: Build frontend
         env:
-          NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
+          NEXT_PUBLIC_API_URL: ${{ steps.outputs.outputs.API_URL }}
           NEXT_PUBLIC_USER_POOL_ID: ${{ steps.outputs.outputs.USER_POOL_ID }}
           NEXT_PUBLIC_USER_POOL_CLIENT_ID: ${{ steps.outputs.outputs.USER_POOL_CLIENT_ID }}
           NEXT_PUBLIC_COGNITO_DOMAIN: ${{ steps.outputs.outputs.COGNITO_DOMAIN }}
@@ -245,11 +246,12 @@ jobs:
           echo "USER_POOL_ID=$(get_output TeamManager-Auth-prod UserPoolId)" >> $GITHUB_OUTPUT
           echo "USER_POOL_CLIENT_ID=$(get_output TeamManager-Auth-prod UserPoolClientId)" >> $GITHUB_OUTPUT
           echo "COGNITO_DOMAIN=$(get_output TeamManager-Auth-prod UserPoolDomain)" >> $GITHUB_OUTPUT
+          echo "API_URL=$(get_output TeamManager-Infra-prod ApiUrl)" >> $GITHUB_OUTPUT
 
       # ── Build frontend with CDK outputs ──
       - name: Build frontend
         env:
-          NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
+          NEXT_PUBLIC_API_URL: ${{ steps.outputs.outputs.API_URL }}
           NEXT_PUBLIC_USER_POOL_ID: ${{ steps.outputs.outputs.USER_POOL_ID }}
           NEXT_PUBLIC_USER_POOL_CLIENT_ID: ${{ steps.outputs.outputs.USER_POOL_CLIENT_ID }}
           NEXT_PUBLIC_COGNITO_DOMAIN: ${{ steps.outputs.outputs.COGNITO_DOMAIN }}

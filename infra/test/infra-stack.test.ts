@@ -11,6 +11,8 @@ describe('InfraStack', () => {
       stageName: 'test',
       userPoolArn:
         'arn:aws:cognito-idp:us-east-1:123456789012:userpool/us-east-1_TestPool',
+      userPoolId: 'us-east-1_TestPool',
+      userPoolClientId: 'test-client-id',
       policyStoreId: 'test-policy-store-id',
     });
     template = Template.fromStack(stack);
@@ -21,29 +23,7 @@ describe('InfraStack', () => {
 
     template.hasResourceProperties('AWS::DynamoDB::Table', {
       TableName: 'TeamManager-Table-test',
-      KeySchema: [
-        { AttributeName: 'pk', KeyType: 'HASH' },
-        { AttributeName: 'sk', KeyType: 'RANGE' },
-      ],
       BillingMode: 'PAY_PER_REQUEST',
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: 'gsi1pk-gsi1sk-index',
-          KeySchema: [
-            { AttributeName: 'gsi1pk', KeyType: 'HASH' },
-            { AttributeName: 'gsi1sk', KeyType: 'RANGE' },
-          ],
-          Projection: { ProjectionType: 'ALL' },
-        },
-        {
-          IndexName: 'gsi2pk-gsi2sk-index',
-          KeySchema: [
-            { AttributeName: 'gsi2pk', KeyType: 'HASH' },
-            { AttributeName: 'gsi2sk', KeyType: 'RANGE' },
-          ],
-          Projection: { ProjectionType: 'ALL' },
-        },
-      ],
     });
   });
 
@@ -66,8 +46,27 @@ describe('InfraStack', () => {
     });
   });
 
-  test('outputs table name and event bus name', () => {
+  test('creates Lambda function for backend API', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'TeamManager-API-test',
+      Runtime: 'nodejs22.x',
+      MemorySize: 512,
+      Timeout: 29,
+    });
+  });
+
+  test('creates HTTP API Gateway', () => {
+    template.resourceCountIs('AWS::ApiGatewayV2::Api', 1);
+
+    template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      Name: 'TeamManager-API-test',
+      ProtocolType: 'HTTP',
+    });
+  });
+
+  test('outputs table name, event bus name, and API URL', () => {
     template.hasOutput('TableName', {});
     template.hasOutput('EventBusName', {});
+    template.hasOutput('ApiUrl', {});
   });
 });

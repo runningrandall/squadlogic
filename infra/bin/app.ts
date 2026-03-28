@@ -21,6 +21,8 @@ const authStack = new AuthStack(app, `TeamManager-Auth-${stageName}`, {
 const infraStack = new InfraStack(app, `TeamManager-Infra-${stageName}`, {
   stageName,
   userPoolArn: authStack.userPoolArn,
+  userPoolId: authStack.userPoolId,
+  userPoolClientId: authStack.userPoolClientId,
   policyStoreId: authStack.policyStoreId,
   tags,
 });
