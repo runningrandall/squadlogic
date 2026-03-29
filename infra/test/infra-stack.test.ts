@@ -14,6 +14,10 @@ describe('InfraStack', () => {
       userPoolId: 'us-east-1_TestPool',
       userPoolClientId: 'test-client-id',
       policyStoreId: 'test-policy-store-id',
+      domainName: 'squadlogic.io',
+      apiDomainName: 'api-test.squadlogic.io',
+      certificateArn: '',
+      hostedZoneId: '',
     });
     template = Template.fromStack(stack);
   });

@@ -2,10 +2,17 @@ import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import type { Construct } from 'constructs';
 
 export interface FrontendStackProps extends cdk.StackProps {
   stageName: string;
+  domainName: string;
+  appDomainName: string;
+  certificateArn: string;
+  hostedZoneId: string;
 }
 
 export class FrontendStack extends cdk.Stack {
@@ -34,37 +41,67 @@ export class FrontendStack extends cdk.Stack {
       originAccessControlName: `TeamManager-OAC-${stageName}`,
     });
 
-    // CloudFront distribution
-    this.distribution = new cloudfront.Distribution(
-      this,
-      'SiteDistribution',
-      {
-        defaultBehavior: {
-          origin: origins.S3BucketOrigin.withOriginAccessControl(
-            this.siteBucket,
-            { originAccessControl: oac },
-          ),
-          viewerProtocolPolicy:
-            cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-        },
-        defaultRootObject: 'index.html',
-        errorResponses: [
-          {
-            httpStatus: 403,
-            responseHttpStatus: 200,
-            responsePagePath: '/index.html',
-            ttl: cdk.Duration.minutes(5),
-          },
-          {
-            httpStatus: 404,
-            responseHttpStatus: 200,
-            responsePagePath: '/index.html',
-            ttl: cdk.Duration.minutes(5),
-          },
-        ],
+    // CloudFront distribution config
+    const distributionProps: cloudfront.DistributionProps = {
+      defaultBehavior: {
+        origin: origins.S3BucketOrigin.withOriginAccessControl(
+          this.siteBucket,
+          { originAccessControl: oac },
+        ),
+        viewerProtocolPolicy:
+          cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },
+      defaultRootObject: 'index.html',
+      errorResponses: [
+        {
+          httpStatus: 403,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: cdk.Duration.minutes(5),
+        },
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: cdk.Duration.minutes(5),
+        },
+      ],
+    };
+
+    // Add custom domain if certificate is provided
+    if (props.certificateArn) {
+      const certificate = acm.Certificate.fromCertificateArn(
+        this, 'SiteCert', props.certificateArn,
+      );
+
+      Object.assign(distributionProps, {
+        domainNames: [props.appDomainName],
+        certificate,
+      });
+    }
+
+    this.distribution = new cloudfront.Distribution(
+      this, 'SiteDistribution', distributionProps,
     );
+
+    // Route 53 alias record for custom domain
+    if (props.certificateArn && props.hostedZoneId) {
+      const hostedZone = route53.HostedZone.fromHostedZoneAttributes(
+        this, 'SiteHostedZone', {
+          hostedZoneId: props.hostedZoneId,
+          zoneName: props.domainName,
+        },
+      );
+
+      new route53.ARecord(this, 'SiteAliasRecord', {
+        zone: hostedZone,
+        recordName: props.appDomainName,
+        target: route53.RecordTarget.fromAlias(
+          new route53Targets.CloudFrontTarget(this.distribution),
+        ),
+      });
+    }
 
     // Outputs
     new cdk.CfnOutput(this, 'DistributionDomainName', {
@@ -76,5 +113,12 @@ export class FrontendStack extends cdk.Stack {
       value: this.siteBucket.bucketName,
       description: 'Frontend S3 Bucket Name',
     });
+
+    if (props.appDomainName) {
+      new cdk.CfnOutput(this, 'AppUrl', {
+        value: `https://${props.appDomainName}`,
+        description: 'Application URL',
+      });
+    }
   }
 }

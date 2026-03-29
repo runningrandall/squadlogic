@@ -7,6 +7,9 @@ import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as path from 'node:path';
 import type { Construct } from 'constructs';
 
@@ -16,6 +19,10 @@ export interface InfraStackProps extends cdk.StackProps {
   userPoolId: string;
   userPoolClientId: string;
   policyStoreId: string;
+  domainName: string;
+  apiDomainName: string;
+  certificateArn: string;
+  hostedZoneId: string;
 }
 
 export class InfraStack extends cdk.Stack {
@@ -144,6 +151,41 @@ export class InfraStack extends cdk.Stack {
       methods: [apigwv2.HttpMethod.GET],
       integration,
     });
+
+    // ── Custom Domain for API ──
+    if (props.certificateArn && props.hostedZoneId) {
+      const certificate = acm.Certificate.fromCertificateArn(
+        this, 'ApiCert', props.certificateArn,
+      );
+
+      const apiCustomDomain = new apigwv2.DomainName(this, 'ApiDomain', {
+        domainName: props.apiDomainName,
+        certificate,
+      });
+
+      new apigwv2.ApiMapping(this, 'ApiMapping', {
+        api: this.api,
+        domainName: apiCustomDomain,
+      });
+
+      const hostedZone = route53.HostedZone.fromHostedZoneAttributes(
+        this, 'ApiHostedZone', {
+          hostedZoneId: props.hostedZoneId,
+          zoneName: props.domainName,
+        },
+      );
+
+      new route53.ARecord(this, 'ApiAliasRecord', {
+        zone: hostedZone,
+        recordName: props.apiDomainName,
+        target: route53.RecordTarget.fromAlias(
+          new route53Targets.ApiGatewayv2DomainProperties(
+            apiCustomDomain.regionalDomainName,
+            apiCustomDomain.regionalHostedZoneId,
+          ),
+        ),
+      });
+    }
 
     // ── Outputs ──
     new cdk.CfnOutput(this, 'TableName', {
