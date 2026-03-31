@@ -97,7 +97,7 @@ export class InfraStack extends cdk.Stack {
         externalModules: ['@aws-sdk/*'],
       },
       environment: {
-        NODE_ENV: stageName === 'dev' ? 'development' : 'production',
+        NODE_ENV: 'production',
         TABLE_NAME: this.table.tableName,
         EVENT_BUS_NAME: this.eventBus.eventBusName,
         COGNITO_USER_POOL_ID: props.userPoolId,

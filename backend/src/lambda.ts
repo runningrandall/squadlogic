@@ -1,9 +1,21 @@
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from 'aws-lambda';
 import awsLambdaFastify from '@fastify/aws-lambda';
 import { buildApp } from './app.js';
 
-const app = await buildApp();
-await app.ready();
+let proxy: (event: APIGatewayProxyEventV2, context: Context) => Promise<APIGatewayProxyResultV2>;
 
-const proxy = awsLambdaFastify(app);
+try {
+  const app = await buildApp();
+  await app.ready();
+  proxy = awsLambdaFastify(app);
+} catch (err) {
+  console.error('Failed to initialize Fastify app:', err);
+  proxy = async () => ({
+    statusCode: 500,
+    body: JSON.stringify({ error: 'Lambda initialization failed', message: String(err) }),
+  });
+}
 
-export const handler = proxy;
+export const handler = async (event: APIGatewayProxyEventV2, context: Context) => {
+  return proxy(event, context);
+};
