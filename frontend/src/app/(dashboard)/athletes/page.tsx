@@ -27,7 +27,7 @@ export default function AthletesPage() {
     async function fetchAthletes() {
       try {
         setIsLoading(true);
-        const data = await api.get<Athlete[]>('/athletes');
+        const { items: data } = await api.get<{ items: Athlete[] }>('/athletes');
         setAthletes(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load athletes');

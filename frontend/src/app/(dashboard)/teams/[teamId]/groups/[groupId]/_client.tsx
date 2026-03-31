@@ -35,7 +35,7 @@ export default function GroupDetailClient({ params }: { params: { teamId: string
         setIsLoading(true);
         const [groupData, membersData] = await Promise.all([
           api.get<GroupDetail>(`/teams/${teamId}/groups/${groupId}`),
-          api.get<GroupMember[]>(`/teams/${teamId}/groups/${groupId}/members`),
+          api.get<{ items: GroupMember[] }>(`/groups/${groupId}/members`).then(r => r.items),
         ]);
         setGroup(groupData);
         setMembers(membersData);

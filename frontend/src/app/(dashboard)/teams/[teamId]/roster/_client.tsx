@@ -38,7 +38,7 @@ export default function RosterClient({ params }: { params: { teamId: string } })
     async function fetchMembers() {
       try {
         setIsLoading(true);
-        const data = await api.get<TeamMember[]>(`/teams/${teamId}/members`);
+        const { items: data } = await api.get<{ items: TeamMember[] }>(`/teams/${teamId}/members`);
         setMembers(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load roster');

@@ -36,7 +36,7 @@ export default function CoachDetailClient({ params }: { params: { coachId: strin
         setIsLoading(true);
         const [coachData, teamsData] = await Promise.all([
           api.get<Coach>(`/coaches/${coachId}`),
-          api.get<TeamMembership[]>(`/coaches/${coachId}/teams`).catch(() => [] as TeamMembership[]),
+          api.get<{ items: TeamMembership[] }>(`/coaches/${coachId}/teams`).then(r => r.items).catch(() => [] as TeamMembership[]),
         ]);
         setCoach(coachData);
         setTeams(teamsData);

@@ -25,7 +25,7 @@ export default function GroupsClient({ params }: { params: { teamId: string } })
     async function fetchGroups() {
       try {
         setIsLoading(true);
-        const data = await api.get<Group[]>(`/teams/${teamId}/groups`);
+        const { items: data } = await api.get<{ items: Group[] }>(`/teams/${teamId}/groups`);
         setGroups(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load groups');

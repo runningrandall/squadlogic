@@ -26,7 +26,7 @@ export default function TeamsPage() {
     async function fetchTeams() {
       try {
         setIsLoading(true);
-        const data = await api.get<Team[]>('/teams');
+        const { items: data } = await api.get<{ items: Team[] }>('/teams');
         setTeams(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load teams');
