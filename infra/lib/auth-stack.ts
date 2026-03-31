@@ -178,10 +178,18 @@ export class AuthStack extends cdk.Stack {
       },
     );
 
-    userPool.addTrigger(
-      cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
-      preTokenGenerationFn,
-    );
+    // Use property override to set V2_0 trigger (addTrigger doesn't support V2 lambda version)
+    const cfnUserPool = userPool.node.defaultChild as cognito.CfnUserPool;
+    cfnUserPool.addPropertyOverride('LambdaConfig.PreTokenGenerationConfig', {
+      LambdaArn: preTokenGenerationFn.functionArn,
+      LambdaVersion: 'V2_0',
+    });
+
+    // Grant Cognito permission to invoke the Lambda
+    preTokenGenerationFn.addPermission('CognitoInvoke', {
+      principal: new cdk.aws_iam.ServicePrincipal('cognito-idp.amazonaws.com'),
+      sourceArn: userPool.userPoolArn,
+    });
 
     // Verified Permissions Policy Store with Cedar Schema
     const cedarSchema: Record<string, unknown> = {
