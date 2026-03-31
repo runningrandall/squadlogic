@@ -1,7 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { AuthGuard } from '@/components/auth-guard';
 import { useAuth, type UserRole } from '@/lib/auth-context';
 
@@ -69,6 +70,32 @@ function Sidebar() {
   );
 }
 
+function RouteReconciler({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    // After hydration, force Next.js to navigate to the actual URL
+    // This handles the case where CloudFront serves /dashboard/index.html
+    // for a dynamic route like /teams/123
+    router.replace(pathname);
+    setIsReady(true);
+    // Only run once on mount to reconcile the route after CloudFront serves the dashboard shell
+    // eslint-disable-next-line
+  }, []);
+
+  if (!isReady) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -78,7 +105,9 @@ export default function DashboardLayout({
     <AuthGuard>
       <div className="flex min-h-screen">
         <Sidebar />
-        <main className="flex-1 p-8 bg-gray-50">{children}</main>
+        <main className="flex-1 p-8 bg-gray-50">
+          <RouteReconciler>{children}</RouteReconciler>
+        </main>
       </div>
     </AuthGuard>
   );

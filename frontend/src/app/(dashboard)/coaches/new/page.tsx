@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -12,6 +12,8 @@ export default function NewCoachPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [teams, setTeams] = useState<Array<{ teamId: string; name: string; sport: string }>>([]);
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -20,6 +22,18 @@ export default function NewCoachPage() {
     certifications: '',
     specialties: '',
   });
+
+  useEffect(() => {
+    api.get<{ items: Array<{ teamId: string; name: string; sport: string }> }>('/teams')
+      .then((res) => setTeams(res.items))
+      .catch(() => {});
+  }, []);
+
+  const toggleTeam = (teamId: string) => {
+    setSelectedTeams((prev) =>
+      prev.includes(teamId) ? prev.filter((id) => id !== teamId) : [...prev, teamId],
+    );
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -31,7 +45,7 @@ export default function NewCoachPage() {
     setIsSubmitting(true);
 
     try {
-      await api.post('/coaches', {
+      const coach = await api.post<{ coachId: string }>('/coaches', {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
@@ -43,6 +57,15 @@ export default function NewCoachPage() {
           ? form.specialties.split(',').map((s) => s.trim()).filter(Boolean)
           : [],
       });
+
+      for (const teamId of selectedTeams) {
+        await api.post(`/teams/${teamId}/members`, {
+          memberId: coach.coachId,
+          memberType: 'coach',
+          role: 'assistant_coach',
+        }).catch(() => {});
+      }
+
       router.push('/coaches');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create coach');
@@ -164,6 +187,31 @@ export default function NewCoachPage() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
+
+          {teams.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Assign to Teams
+              </label>
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                {teams.map((team) => (
+                  <label key={team.teamId} className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                    <input
+                      type="checkbox"
+                      checked={selectedTeams.includes(team.teamId)}
+                      onChange={() => toggleTeam(team.teamId)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">{team.name}</span>
+                    <span className="text-xs text-gray-400">{team.sport}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {selectedTeams.length} team{selectedTeams.length !== 1 ? 's' : ''} selected
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <button
