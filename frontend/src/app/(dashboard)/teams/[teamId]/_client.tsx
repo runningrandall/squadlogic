@@ -101,7 +101,7 @@ export default function TeamDetailClient({ params }: { params: { teamId: string 
           )}
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-sm font-medium text-gray-500">Groups</h3>
+          <h3 className="text-sm font-medium text-gray-500">Squads</h3>
           <p className="text-2xl font-bold text-gray-900 mt-1">{team.groupCount ?? 0}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -122,8 +122,8 @@ export default function TeamDetailClient({ params }: { params: { teamId: string 
           href={`/teams/${teamId}/groups`}
           className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:border-blue-300 hover:shadow-md transition-all"
         >
-          <h3 className="text-lg font-semibold text-gray-900">Groups</h3>
-          <p className="text-sm text-gray-500 mt-1">Organize members into sub-groups</p>
+          <h3 className="text-lg font-semibold text-gray-900">Squads</h3>
+          <p className="text-sm text-gray-500 mt-1">Organize members into squads</p>
         </Link>
         <Link
           href={`/teams/${teamId}/challenges`}

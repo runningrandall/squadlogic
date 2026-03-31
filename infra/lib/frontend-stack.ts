@@ -24,6 +24,45 @@ export class FrontendStack extends cdk.Stack {
 
     const { stageName } = props;
 
+    // CloudFront Function for SPA routing (viewer-request)
+    const spaRouter = new cloudfront.Function(this, 'SpaRouter', {
+      functionName: `TeamManager-SpaRouter-${stageName}`,
+      code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var request = event.request;
+  var uri = request.uri;
+
+  // Static assets - pass through
+  if (uri.startsWith('/_next/') || /\\.[a-zA-Z0-9]+$/.test(uri)) {
+    return request;
+  }
+
+  // Dashboard routes - serve dashboard shell
+  var dashRoutes = ['/dashboard', '/teams', '/athletes', '/coaches', '/schedule', '/communications', '/admin'];
+  for (var i = 0; i < dashRoutes.length; i++) {
+    if (uri === dashRoutes[i] || uri === dashRoutes[i] + '/' || uri.startsWith(dashRoutes[i] + '/')) {
+      request.uri = '/dashboard/index.html';
+      return request;
+    }
+  }
+
+  // Auth routes - serve their own pages
+  var authRoutes = ['/login', '/signup', '/confirm', '/forgot-password'];
+  for (var i = 0; i < authRoutes.length; i++) {
+    if (uri === authRoutes[i] || uri === authRoutes[i] + '/') {
+      request.uri = authRoutes[i] + '/index.html';
+      return request;
+    }
+  }
+
+  // Root or unknown
+  request.uri = '/index.html';
+  return request;
+}
+`),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+    });
+
     // S3 bucket for static site hosting
     this.siteBucket = new s3.Bucket(this, 'SiteBucket', {
       bucketName: `teammanager-frontend-${stageName}-${this.account}`,
@@ -51,22 +90,12 @@ export class FrontendStack extends cdk.Stack {
         viewerProtocolPolicy:
           cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        functionAssociations: [{
+          function: spaRouter,
+          eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+        }],
       },
       defaultRootObject: 'index.html',
-      errorResponses: [
-        {
-          httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: cdk.Duration.minutes(5),
-        },
-        {
-          httpStatus: 404,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: cdk.Duration.minutes(5),
-        },
-      ],
     };
 
     // Add custom domain if certificate is provided

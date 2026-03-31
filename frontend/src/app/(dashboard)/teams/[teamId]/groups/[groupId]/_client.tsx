@@ -40,7 +40,7 @@ export default function GroupDetailClient({ params }: { params: { teamId: string
         setGroup(groupData);
         setMembers(membersData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load group');
+        setError(err instanceof Error ? err.message : 'Failed to load squad');
       } finally {
         setIsLoading(false);
       }
@@ -63,7 +63,7 @@ export default function GroupDetailClient({ params }: { params: { teamId: string
       setShowAddForm(false);
       setAthleteId('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add athlete to group');
+      setError(err instanceof Error ? err.message : 'Failed to add athlete to squad');
     } finally {
       setIsSubmitting(false);
     }
@@ -72,7 +72,7 @@ export default function GroupDetailClient({ params }: { params: { teamId: string
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">Loading group...</div>
+        <div className="text-gray-500">Loading squad...</div>
       </div>
     );
   }
@@ -87,7 +87,7 @@ export default function GroupDetailClient({ params }: { params: { teamId: string
 
   if (!group) {
     return (
-      <div className="text-center py-12 text-gray-500">Group not found.</div>
+      <div className="text-center py-12 text-gray-500">Squad not found.</div>
     );
   }
 
@@ -95,7 +95,7 @@ export default function GroupDetailClient({ params }: { params: { teamId: string
     <div>
       <div className="mb-6">
         <Link href={`/teams/${teamId}/groups`} className="text-sm text-blue-600 hover:underline">
-          &larr; Back to Groups
+          &larr; Back to Squads
         </Link>
       </div>
 
@@ -118,7 +118,7 @@ export default function GroupDetailClient({ params }: { params: { teamId: string
 
       {showAddForm && (
         <form onSubmit={handleAddAthlete} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Add Athlete to Group</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Add Athlete to Squad</h2>
           <div>
             <label htmlFor="athleteId" className="block text-sm font-medium text-gray-700 mb-1">
               Athlete ID *
@@ -138,7 +138,7 @@ export default function GroupDetailClient({ params }: { params: { teamId: string
             disabled={isSubmitting}
             className="rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            {isSubmitting ? 'Adding...' : 'Add to Group'}
+            {isSubmitting ? 'Adding...' : 'Add to Squad'}
           </button>
         </form>
       )}
@@ -159,7 +159,7 @@ export default function GroupDetailClient({ params }: { params: { teamId: string
             {members.length === 0 ? (
               <tr>
                 <td colSpan={3} className="px-6 py-12 text-center text-sm text-gray-500">
-                  No members in this group yet.
+                  No members in this squad yet.
                 </td>
               </tr>
             ) : (

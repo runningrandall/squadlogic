@@ -162,12 +162,12 @@ export default function ChallengeDetailClient({ params }: { params: { teamId: st
 
       <div className="rounded-xl bg-white shadow-sm border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Group Completion Status</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Squad Completion Status</h2>
         </div>
 
         {groups.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-gray-500">
-            No groups in this team yet.
+            No squads in this team yet.
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">
