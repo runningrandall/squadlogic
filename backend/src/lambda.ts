@@ -6,7 +6,6 @@ let proxy: (event: APIGatewayProxyEventV2, context: Context) => Promise<APIGatew
 
 try {
   const app = await buildApp();
-  await app.ready();
   proxy = awsLambdaFastify(app);
 } catch (err) {
   console.error('Failed to initialize Fastify app:', err);
