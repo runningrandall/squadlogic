@@ -28,7 +28,7 @@ export class FrontendStack extends cdk.Stack {
     const { stageName } = props;
 
     // ── S3 bucket for static assets (_next/static, public files) ──
-    this.siteBucket = new s3.Bucket(this, 'StaticAssetsBucket', {
+    this.siteBucket = new s3.Bucket(this, 'SiteBucket', {
       bucketName: `teammanager-frontend-${stageName}-${this.account}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -40,8 +40,8 @@ export class FrontendStack extends cdk.Stack {
     });
 
     // Origin Access Control for CloudFront -> S3
-    const oac = new cloudfront.S3OriginAccessControl(this, 'StaticOAC', {
-      originAccessControlName: `TeamManager-StaticOAC-${stageName}`,
+    const oac = new cloudfront.S3OriginAccessControl(this, 'SiteOAC', {
+      originAccessControlName: `TeamManager-OAC-${stageName}`,
     });
 
     // ── Lambda function running Next.js standalone via Lambda Web Adapter ──
