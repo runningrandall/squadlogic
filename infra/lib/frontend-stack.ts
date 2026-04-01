@@ -50,8 +50,8 @@ export class FrontendStack extends cdk.Stack {
     // frontend is built beforehand, so the directory exists. For local
     // development where the build may not have run, create a placeholder so
     // CDK synth does not fail.
-    const standalonePath = path.resolve(__dirname, '..', '..', 'frontend', '.next', 'standalone');
-    const runShSource = path.resolve(__dirname, '..', '..', 'frontend', 'run.sh');
+    const standalonePath = path.resolve('..', 'frontend', '.next', 'standalone');
+    const runShSource = path.resolve('..', 'frontend', 'run.sh');
 
     if (!fs.existsSync(standalonePath)) {
       fs.mkdirSync(standalonePath, { recursive: true });
