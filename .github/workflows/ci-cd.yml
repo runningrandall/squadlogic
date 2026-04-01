@@ -19,8 +19,8 @@ env:
 # ════════════════════════════════════════════════
 # Pipeline flow:
 #
-#   PR (dev → main):    lint + test → build → deploy-dev
-#   Push to main:       lint + test → build → release → deploy-prod
+#   PR (dev -> main):    lint + test -> build -> deploy-dev
+#   Push to main:        lint + test -> build -> release -> deploy-prod
 #
 # ════════════════════════════════════════════════
 
@@ -91,7 +91,7 @@ jobs:
         run: npx cdk synth -c stageName=prod
 
   # ──────────────────────────────────────────────
-  # Deploy DEV (PR from dev → main)
+  # Deploy DEV (PR from dev -> main)
   # ──────────────────────────────────────────────
   deploy-dev:
     name: Deploy Dev
@@ -121,10 +121,15 @@ jobs:
       - name: Build backend
         run: pnpm --filter backend run build
 
-      # ── Deploy infra first (creates all AWS resources) ──
-      - name: Deploy CDK stacks
+      # ── Deploy Auth + Infra stacks first (creates Cognito, API Gateway, etc.) ──
+      - name: Deploy Auth & Infra stacks
         working-directory: infra
-        run: npx cdk deploy --all -c stageName=dev -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} --require-approval never
+        run: |
+          npx cdk deploy TeamManager-Auth-dev TeamManager-Infra-dev \
+            -c stageName=dev \
+            -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} \
+            -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+            --require-approval never
 
       # ── Fetch CDK outputs (Cognito IDs, table name, etc.) ──
       - name: Fetch stack outputs
@@ -141,7 +146,7 @@ jobs:
           echo "COGNITO_DOMAIN=$(get_output TeamManager-Auth-dev UserPoolDomain)" >> $GITHUB_OUTPUT
           echo "API_URL=$(get_output TeamManager-Infra-dev ApiUrl)" >> $GITHUB_OUTPUT
 
-      # ── Build frontend with CDK outputs injected ──
+      # ── Build frontend with CDK outputs injected (standalone mode) ──
       - name: Build frontend
         env:
           NEXT_PUBLIC_API_URL: ${{ steps.outputs.outputs.API_URL }}
@@ -154,14 +159,22 @@ jobs:
           NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
         run: pnpm --filter frontend run build
 
-      # ── Deploy frontend to S3 + invalidate CDN ──
-      - name: Deploy frontend
+      # ── Deploy Frontend stack (Lambda with standalone build) ──
+      - name: Deploy Frontend stack
+        working-directory: infra
+        run: |
+          npx cdk deploy TeamManager-Frontend-dev \
+            -c stageName=dev \
+            --require-approval never
+
+      # ── Sync static assets to S3 + invalidate CDN ──
+      - name: Deploy static assets
         run: |
           BUCKET=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-dev \
             --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
             --output text)
-          aws s3 sync frontend/out/ "s3://${BUCKET}" --delete
+          aws s3 sync frontend/.next/static/ "s3://${BUCKET}/_next/static/" --cache-control "public,max-age=31536000,immutable"
 
           DOMAIN=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-dev \
@@ -228,10 +241,15 @@ jobs:
       - name: Build backend
         run: pnpm --filter backend run build
 
-      # ── Deploy infra first ──
-      - name: Deploy CDK stacks
+      # ── Deploy Auth + Infra stacks first ──
+      - name: Deploy Auth & Infra stacks
         working-directory: infra
-        run: npx cdk deploy --all -c stageName=prod -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} --require-approval never
+        run: |
+          npx cdk deploy TeamManager-Auth-prod TeamManager-Infra-prod \
+            -c stageName=prod \
+            -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} \
+            -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+            --require-approval never
 
       # ── Fetch CDK outputs ──
       - name: Fetch stack outputs
@@ -248,7 +266,7 @@ jobs:
           echo "COGNITO_DOMAIN=$(get_output TeamManager-Auth-prod UserPoolDomain)" >> $GITHUB_OUTPUT
           echo "API_URL=$(get_output TeamManager-Infra-prod ApiUrl)" >> $GITHUB_OUTPUT
 
-      # ── Build frontend with CDK outputs ──
+      # ── Build frontend with CDK outputs (standalone mode) ──
       - name: Build frontend
         env:
           NEXT_PUBLIC_API_URL: ${{ steps.outputs.outputs.API_URL }}
@@ -261,14 +279,22 @@ jobs:
           NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
         run: pnpm --filter frontend run build
 
-      # ── Deploy frontend to S3 + invalidate CDN ──
-      - name: Deploy frontend
+      # ── Deploy Frontend stack (Lambda with standalone build) ──
+      - name: Deploy Frontend stack
+        working-directory: infra
+        run: |
+          npx cdk deploy TeamManager-Frontend-prod \
+            -c stageName=prod \
+            --require-approval never
+
+      # ── Sync static assets to S3 + invalidate CDN ──
+      - name: Deploy static assets
         run: |
           BUCKET=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-prod \
             --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
             --output text)
-          aws s3 sync frontend/out/ "s3://${BUCKET}" --delete
+          aws s3 sync frontend/.next/static/ "s3://${BUCKET}/_next/static/" --cache-control "public,max-age=31536000,immutable"
 
           DOMAIN=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-prod \
