@@ -68,25 +68,16 @@ export class FrontendStack extends cdk.Stack {
       fs.chmodSync(path.join(standalonePath, 'run.sh'), 0o755);
     }
 
-    // AWS Lambda Web Adapter layer – translates Lambda invoke events into
-    // HTTP requests to a local server running inside the Lambda function.
-    const webAdapterLayer = lambda.LayerVersion.fromLayerVersionArn(
-      this, 'WebAdapterLayer',
-      `arn:aws:lambda:${this.region}:753240598075:layer:LambdaAdapterLayerX86:24`,
-    );
-
     const nextjsFn = new lambda.Function(this, 'NextjsFn', {
       functionName: `TeamManager-Frontend-${stageName}`,
       runtime: lambda.Runtime.NODEJS_22_X,
-      handler: 'run.sh',
+      handler: 'lambda-handler.handler',
       code: lambda.Code.fromAsset(standalonePath),
-      layers: [webAdapterLayer],
       memorySize: 1024,
       timeout: cdk.Duration.seconds(30),
       environment: {
-        AWS_LAMBDA_EXEC_WRAPPER: '/opt/bootstrap',
-        PORT: '8080',
-        HOSTNAME: '0.0.0.0',
+        PORT: '3000',
+        HOSTNAME: '127.0.0.1',
         NODE_ENV: 'production',
       },
     });

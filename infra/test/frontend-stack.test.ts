@@ -32,28 +32,26 @@ describe('FrontendStack', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: 'TeamManager-Frontend-test',
       Runtime: 'nodejs22.x',
-      Handler: 'run.sh',
+      Handler: 'lambda-handler.handler',
       MemorySize: 1024,
       Timeout: 30,
     });
   });
 
-  test('Lambda function has Web Adapter environment variables', () => {
+  test('Lambda function has correct environment variables', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       Environment: {
         Variables: Match.objectLike({
-          AWS_LAMBDA_EXEC_WRAPPER: '/opt/bootstrap',
-          PORT: '8080',
-          HOSTNAME: '0.0.0.0',
+          PORT: '3000',
           NODE_ENV: 'production',
         }),
       },
     });
   });
 
-  test('Lambda function has Web Adapter layer', () => {
+  test('Lambda function uses lambda-handler', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
-      Layers: Match.anyValue(),
+      Handler: 'lambda-handler.handler',
     });
   });
 

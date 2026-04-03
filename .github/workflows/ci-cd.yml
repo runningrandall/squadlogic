@@ -80,7 +80,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter backend run build
-      - run: pnpm --filter frontend run build
+      - name: Build frontend
+        run: |
+          pnpm --filter frontend run build
+          cp frontend/lambda-handler.js frontend/.next/standalone/
       - name: CDK synth (dev)
         if: github.event_name == 'pull_request'
         working-directory: infra
@@ -157,7 +160,9 @@ jobs:
           NEXT_PUBLIC_REDIRECT_SIGN_OUT: ${{ vars.APP_URL }}
           NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
           NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
-        run: pnpm --filter frontend run build
+        run: |
+          pnpm --filter frontend run build
+          cp frontend/lambda-handler.js frontend/.next/standalone/
 
       # ── Deploy Frontend stack (Lambda with standalone build) ──
       - name: Deploy Frontend stack
@@ -277,7 +282,9 @@ jobs:
           NEXT_PUBLIC_REDIRECT_SIGN_OUT: ${{ vars.APP_URL }}
           NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
           NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
-        run: pnpm --filter frontend run build
+        run: |
+          pnpm --filter frontend run build
+          cp frontend/lambda-handler.js frontend/.next/standalone/
 
       # ── Deploy Frontend stack (Lambda with standalone build) ──
       - name: Deploy Frontend stack
