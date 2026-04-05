@@ -55,6 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
+    // Skip auth check during SSR — Amplify needs browser localStorage
+    if (typeof window === 'undefined') return;
+
     try {
       const currentUser = await getCurrentUser();
       const session = await fetchAuthSession();
