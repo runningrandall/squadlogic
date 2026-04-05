@@ -10,6 +10,7 @@ interface GroupDetail {
   groupId: string;
   name: string;
   description: string;
+  aliases: string[];
 }
 
 interface GroupMember {
@@ -35,7 +36,7 @@ export default function GroupDetailPage() {
       try {
         setIsLoading(true);
         const [groupData, membersData] = await Promise.all([
-          api.get<GroupDetail>(`/teams/${teamId}/groups/${groupId}`),
+          api.get<GroupDetail>(`/groups/${groupId}`),
           api.get<{ items: GroupMember[] }>(`/groups/${groupId}/members`).then(r => r.items),
         ]);
         setGroup(groupData);
@@ -57,7 +58,7 @@ export default function GroupDetailPage() {
     setIsSubmitting(true);
 
     try {
-      const newMember = await api.post<GroupMember>(`/teams/${teamId}/groups/${groupId}/members`, {
+      const newMember = await api.post<GroupMember>(`/groups/${groupId}/members`, {
         athleteId,
       });
       setMembers((prev) => [...prev, newMember]);
@@ -103,6 +104,15 @@ export default function GroupDetailPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
+          {group.aliases?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {group.aliases.map((alias) => (
+                <span key={alias} className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                  {alias}
+                </span>
+              ))}
+            </div>
+          )}
           {group.description && (
             <p className="text-gray-500 mt-1">{group.description}</p>
           )}

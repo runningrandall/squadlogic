@@ -30,6 +30,14 @@ export const GroupEntity = new Entity(
         required: true,
         default: '',
       },
+      aliases: {
+        type: 'list',
+        items: {
+          type: 'string',
+        },
+        required: false,
+        default: [],
+      },
       status: {
         type: ['active', 'inactive'] as const,
         required: true,

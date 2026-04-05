@@ -20,6 +20,25 @@ describe('CreateGroupSchema', () => {
     expect(result.description).toBe('');
   });
 
+  it('applies default aliases as empty array', () => {
+    const result = CreateGroupSchema.parse(validCreateData);
+    expect(result.aliases).toEqual([]);
+  });
+
+  it('allows custom aliases', () => {
+    const result = CreateGroupSchema.parse({
+      ...validCreateData,
+      aliases: ['First Team', 'A-Team'],
+    });
+    expect(result.aliases).toEqual(['First Team', 'A-Team']);
+  });
+
+  it('rejects non-string aliases', () => {
+    expect(() =>
+      CreateGroupSchema.parse({ ...validCreateData, aliases: [123] }),
+    ).toThrow();
+  });
+
   it('allows custom description', () => {
     const result = CreateGroupSchema.parse({
       ...validCreateData,
@@ -113,5 +132,21 @@ describe('UpdateGroupSchema', () => {
   it('accepts valid description', () => {
     const result = UpdateGroupSchema.parse({ description: 'Updated desc' });
     expect(result.description).toBe('Updated desc');
+  });
+
+  it('accepts aliases update', () => {
+    const result = UpdateGroupSchema.parse({ aliases: ['Starters', 'Varsity'] });
+    expect(result.aliases).toEqual(['Starters', 'Varsity']);
+  });
+
+  it('allows omitting aliases (optional)', () => {
+    const result = UpdateGroupSchema.parse({ name: 'Test' });
+    expect(result.aliases).toBeUndefined();
+  });
+
+  it('rejects non-string aliases in update', () => {
+    expect(() =>
+      UpdateGroupSchema.parse({ aliases: [42] }),
+    ).toThrow();
   });
 });

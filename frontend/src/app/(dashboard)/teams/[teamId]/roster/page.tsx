@@ -8,11 +8,16 @@ import { RoleGuard } from '@/components/role-guard';
 
 interface TeamMember {
   memberId: string;
-  name: string;
   type: 'athlete' | 'coach';
   role: string;
   jerseyNumber?: string;
   status: string;
+}
+
+interface MemberDetails {
+  firstName: string;
+  lastName: string;
+  email: string;
 }
 
 interface Athlete {
@@ -40,6 +45,7 @@ export default function RosterPage() {
   const { teamId } = useParams() as { teamId: string };
   const { user } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [memberDetailsMap, setMemberDetailsMap] = useState<Record<string, MemberDetails>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -59,6 +65,36 @@ export default function RosterPage() {
         setIsLoading(true);
         const { items: data } = await api.get<{ items: TeamMember[] }>(`/teams/${teamId}/members`);
         setMembers(data);
+
+        // Batch-fetch athlete and coach details for display names
+        const detailsMap: Record<string, MemberDetails> = {};
+        const fetchPromises = data.map(async (member) => {
+          try {
+            if (member.type === 'athlete') {
+              const athlete = await api.get<Athlete>(`/athletes/${member.memberId}`);
+              detailsMap[member.memberId] = {
+                firstName: athlete.firstName,
+                lastName: athlete.lastName,
+                email: athlete.email,
+              };
+            } else {
+              const coach = await api.get<Coach>(`/coaches/${member.memberId}`);
+              detailsMap[member.memberId] = {
+                firstName: coach.firstName,
+                lastName: coach.lastName,
+                email: coach.email,
+              };
+            }
+          } catch {
+            detailsMap[member.memberId] = {
+              firstName: 'Unknown',
+              lastName: '',
+              email: '',
+            };
+          }
+        });
+        await Promise.all(fetchPromises);
+        setMemberDetailsMap(detailsMap);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load roster');
       } finally {
@@ -286,7 +322,11 @@ export default function RosterPage() {
             ) : (
               members.map((member) => (
                 <tr key={member.memberId} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{member.name}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    {memberDetailsMap[member.memberId]
+                      ? `${memberDetailsMap[member.memberId].firstName} ${memberDetailsMap[member.memberId].lastName}`.trim()
+                      : 'Unknown'}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       member.type === 'athlete'

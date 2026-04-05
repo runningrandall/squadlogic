@@ -21,7 +21,7 @@ export interface Athlete {
 export const CreateAthleteSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
-  email: z.string().email(),
+  email: z.union([z.string().email(), z.literal('')]).optional().default(''),
   phone: z.string().optional(),
   dateOfBirth: z.string().date().optional(),
   positions: z.array(z.string()).default([]),

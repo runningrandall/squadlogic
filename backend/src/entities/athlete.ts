@@ -27,7 +27,8 @@ export const AthleteEntity = new Entity(
       },
       email: {
         type: 'string',
-        required: true,
+        required: false,
+        default: '',
       },
       phone: {
         type: 'string',

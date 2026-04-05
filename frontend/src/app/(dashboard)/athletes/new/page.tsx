@@ -55,7 +55,7 @@ export default function NewAthletePage() {
       const athlete = await api.post<{ athleteId: string }>('/athletes', {
         firstName: form.firstName,
         lastName: form.lastName,
-        email: form.email,
+        ...(form.email ? { email: form.email } : {}),
         phone: form.phone || undefined,
         dateOfBirth: form.dateOfBirth || undefined,
         positions: form.positions
@@ -138,13 +138,12 @@ export default function NewAthletePage() {
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email *
+              Email
             </label>
             <input
               type="email"
               id="email"
               name="email"
-              required
               value={form.email}
               onChange={handleChange}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

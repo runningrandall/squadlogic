@@ -15,6 +15,7 @@ export default function NewGroupPage() {
   const [form, setForm] = useState({
     name: '',
     description: '',
+    aliases: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -30,6 +31,9 @@ export default function NewGroupPage() {
       await api.post(`/teams/${teamId}/groups`, {
         name: form.name,
         description: form.description,
+        aliases: form.aliases
+          ? form.aliases.split(',').map((a) => a.trim()).filter(Boolean)
+          : [],
       });
       router.push(`/teams/${teamId}/groups`);
     } catch (err) {
@@ -90,6 +94,22 @@ export default function NewGroupPage() {
               onChange={handleChange}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+          </div>
+
+          <div>
+            <label htmlFor="aliases" className="block text-sm font-medium text-gray-700 mb-1">
+              Aliases
+            </label>
+            <input
+              type="text"
+              id="aliases"
+              name="aliases"
+              value={form.aliases}
+              onChange={handleChange}
+              placeholder="e.g. First Team, A-Squad, Starters"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500 mt-1">Comma-separated list of alternative names</p>
           </div>
 
           <div className="flex gap-3">

@@ -135,6 +135,16 @@ describe('CreateAthleteSchema', () => {
     ).toThrow();
   });
 
+  it('allows creation without email and defaults to empty string', () => {
+    const result = CreateAthleteSchema.parse({
+      firstName: 'Jane',
+      lastName: 'Smith',
+    });
+    expect(result.firstName).toBe('Jane');
+    expect(result.lastName).toBe('Smith');
+    expect(result.email).toBe('');
+  });
+
   it('rejects missing required fields', () => {
     expect(() => CreateAthleteSchema.parse({})).toThrow();
   });
