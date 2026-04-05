@@ -208,4 +208,27 @@ export default async function challengeRoutes(
       return noContent(reply);
     },
   );
+
+  // List completions for a specific squad/group
+  fastify.get(
+    '/groups/:groupId/completions',
+    async (
+      request: FastifyRequest<{
+        Params: { groupId: string };
+        Querystring: { cursor?: string; limit?: string };
+      }>,
+      reply,
+    ) => {
+      const { cursor, limit } = request.query;
+      const result = await completionService.listByGroup(
+        request.organizationId,
+        request.params.groupId,
+        {
+          cursor,
+          limit: limit ? parseInt(limit, 10) : undefined,
+        },
+      );
+      return success(reply, result);
+    },
+  );
 }

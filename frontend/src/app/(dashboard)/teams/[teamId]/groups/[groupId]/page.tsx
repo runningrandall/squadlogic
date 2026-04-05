@@ -13,6 +13,25 @@ interface GroupDetail {
   aliases: string[];
 }
 
+interface Challenge {
+  challengeId: string;
+  title: string;
+  description: string;
+  points: number;
+  status: string;
+  routeUrl?: string | null;
+  dueDate?: string | null;
+}
+
+interface ChallengeCompletion {
+  completionId: string;
+  challengeId: string;
+  groupId: string;
+  completedBy: string;
+  completedAt: string;
+  status: string;
+}
+
 interface GroupMember {
   groupMemberId: string;
   athleteId: string;
@@ -41,6 +60,9 @@ export default function GroupDetailPage() {
   const [athleteDetailsMap, setAthleteDetailsMap] = useState<Record<string, AthleteInfo>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [completions, setCompletions] = useState<ChallengeCompletion[]>([]);
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [athleteId, setAthleteId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,6 +91,14 @@ export default function GroupDetailPage() {
           }),
         );
         setAthleteDetailsMap(detailsMap);
+
+        // Fetch all team challenges and this squad's completions
+        const [challengesRes, completionsRes] = await Promise.all([
+          api.get<{ items: Challenge[] }>(`/teams/${teamId}/challenges`).catch(() => ({ items: [] as Challenge[] })),
+          api.get<{ items: ChallengeCompletion[] }>(`/groups/${groupId}/completions`).catch(() => ({ items: [] as ChallengeCompletion[] })),
+        ]);
+        setChallenges(challengesRes.items.filter((c) => c.status === 'active'));
+        setCompletions(completionsRes.items);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load squad');
       } finally {
@@ -115,6 +145,22 @@ export default function GroupDetailPage() {
 
     loadAvailable();
   }, [showAddForm, teamId, members]);
+
+  const completedChallengeIds = new Set(completions.map((c) => c.challengeId));
+
+  const handleMarkComplete = async (challengeId: string) => {
+    setCompletingId(challengeId);
+    try {
+      const completion = await api.post<ChallengeCompletion>(`/challenges/${challengeId}/completions`, {
+        groupId,
+      });
+      setCompletions((prev) => [...prev, completion]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark challenge as completed');
+    } finally {
+      setCompletingId(null);
+    }
+  };
 
   const handleAddAthlete = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,6 +324,67 @@ export default function GroupDetailPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Challenges section */}
+      {challenges.length > 0 && (
+        <div className="rounded-xl bg-white shadow-sm border border-gray-200 mt-8">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Challenges ({completedChallengeIds.size}/{challenges.length} completed)
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {challenges.reduce((sum, c) => completedChallengeIds.has(c.challengeId) ? sum + c.points : sum, 0)} / {challenges.reduce((sum, c) => sum + c.points, 0)} points earned
+            </p>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {challenges.map((challenge) => {
+              const isCompleted = completedChallengeIds.has(challenge.challengeId);
+              const completion = completions.find((c) => c.challengeId === challenge.challengeId);
+              return (
+                <div key={challenge.challengeId} className={`px-6 py-4 flex items-center justify-between ${isCompleted ? 'bg-green-50' : ''}`}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      {isCompleted ? (
+                        <span className="text-green-600 text-lg">&#10003;</span>
+                      ) : (
+                        <span className="text-gray-300 text-lg">&#9675;</span>
+                      )}
+                      <span className={`text-sm font-medium ${isCompleted ? 'text-green-800' : 'text-gray-900'}`}>
+                        {challenge.title}
+                      </span>
+                      <span className="text-xs text-gray-500">{challenge.points} pts</span>
+                    </div>
+                    {challenge.description && (
+                      <p className="text-xs text-gray-500 ml-7 mt-0.5">{challenge.description.slice(0, 100)}</p>
+                    )}
+                    {challenge.routeUrl && (
+                      <a href={challenge.routeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline ml-7">
+                        View Route &#8599;
+                      </a>
+                    )}
+                    {isCompleted && completion && (
+                      <p className="text-xs text-green-600 ml-7 mt-0.5">
+                        Completed {new Date(completion.completedAt).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                  {!isCompleted && (
+                    <RoleGuard allowedRoles={['SuperAdmin', 'OrgAdmin', 'TeamAdmin', 'TeamManager']}>
+                      <button
+                        onClick={() => handleMarkComplete(challenge.challengeId)}
+                        disabled={completingId === challenge.challengeId}
+                        className="rounded-lg bg-green-600 px-3 py-1.5 text-xs text-white font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+                      >
+                        {completingId === challenge.challengeId ? 'Completing...' : 'Mark Complete'}
+                      </button>
+                    </RoleGuard>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
