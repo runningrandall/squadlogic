@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
@@ -25,26 +26,32 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [isLoadingTeams, setIsLoadingTeams] = useState(false);
 
-  useEffect(() => {
+  const loadTeams = useCallback(() => {
     if (!user) return;
     setIsLoadingTeams(true);
     api.get<{ items: Team[] }>('/teams')
-      .then((res) => setTeams(res.items))
+      .then((res) => {
+        setTeams(res.items);
+      })
       .catch(() => {})
       .finally(() => setIsLoadingTeams(false));
   }, [user]);
 
-  // Auto-select team from URL if on a team page
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const match = window.location.pathname.match(/\/teams\/([^/]+)/);
+    loadTeams();
+  }, [loadTeams]);
+
+  // Auto-select team from URL if on a team page
+  const pathname = usePathname();
+  useEffect(() => {
+    const match = pathname.match(/\/teams\/([^/]+)/);
     if (match && teams.length > 0) {
       const team = teams.find(t => t.teamId === match[1]);
-      if (team && (!selectedTeam || selectedTeam.teamId !== team.teamId)) {
+      if (team) {
         setSelectedTeam(team);
       }
     }
-  }, [teams, selectedTeam]);
+  }, [pathname, teams]);
 
   const selectTeam = useCallback((team: Team | null) => {
     setSelectedTeam(team);

@@ -110,22 +110,32 @@ export default function RosterPage() {
   const fetchAvailableMembers = useCallback(async (memberType: 'athlete' | 'coach') => {
     setIsFetchingMembers(true);
     setAvailableMembers([]);
+    // Get IDs of members already on the roster for this type
+    const existingIds = new Set(
+      members
+        .filter((m) => m.type === memberType)
+        .map((m) => m.memberId),
+    );
     try {
       if (memberType === 'athlete') {
         const data = await api.get<{ items: Athlete[] }>('/athletes');
         setAvailableMembers(
-          data.items.map((a) => ({
-            id: a.athleteId,
-            label: `${a.firstName} ${a.lastName} (${a.email})`,
-          })),
+          data.items
+            .filter((a) => !existingIds.has(a.athleteId))
+            .map((a) => ({
+              id: a.athleteId,
+              label: `${a.firstName} ${a.lastName}${a.email ? ` (${a.email})` : ''}`,
+            })),
         );
       } else {
         const data = await api.get<{ items: Coach[] }>('/coaches');
         setAvailableMembers(
-          data.items.map((c) => ({
-            id: c.coachId,
-            label: `${c.firstName} ${c.lastName} (${c.email})`,
-          })),
+          data.items
+            .filter((c) => !existingIds.has(c.coachId))
+            .map((c) => ({
+              id: c.coachId,
+              label: `${c.firstName} ${c.lastName}${c.email ? ` (${c.email})` : ''}`,
+            })),
         );
       }
     } catch {
@@ -133,7 +143,7 @@ export default function RosterPage() {
     } finally {
       setIsFetchingMembers(false);
     }
-  }, []);
+  }, [members]);
 
   useEffect(() => {
     if (showAddForm) {

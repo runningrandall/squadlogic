@@ -14,10 +14,24 @@ interface GroupDetail {
 }
 
 interface GroupMember {
+  groupMemberId: string;
+  athleteId: string;
   memberId: string;
   name: string;
   type: string;
   status: string;
+}
+
+interface TeamMember {
+  memberId: string;
+  memberType: string;
+  teamMemberId: string;
+}
+
+interface AthleteInfo {
+  athleteId: string;
+  firstName: string;
+  lastName: string;
 }
 
 export default function GroupDetailPage() {
@@ -25,6 +39,7 @@ export default function GroupDetailPage() {
   const { user } = useAuth();
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const [availableAthletes, setAvailableAthletes] = useState<AthleteInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -52,6 +67,41 @@ export default function GroupDetailPage() {
       fetchGroupData();
     }
   }, [user, teamId, groupId]);
+
+  // Fetch available athletes (team roster athletes minus existing squad members)
+  useEffect(() => {
+    if (!showAddForm || !teamId) return;
+
+    async function loadAvailable() {
+      try {
+        // Get team members (athletes only)
+        const teamMembers = await api.get<{ items: TeamMember[] }>(`/teams/${teamId}/members`);
+        const athleteIds = teamMembers.items
+          .filter((m) => m.memberType === 'athlete')
+          .map((m) => m.memberId);
+
+        // Get existing squad member IDs
+        const existingIds = new Set(members.map((m) => m.athleteId || m.memberId));
+
+        // Fetch athlete details for available ones
+        const available: AthleteInfo[] = [];
+        for (const id of athleteIds) {
+          if (existingIds.has(id)) continue;
+          try {
+            const a = await api.get<AthleteInfo>(`/athletes/${id}`);
+            available.push(a);
+          } catch {
+            // skip
+          }
+        }
+        setAvailableAthletes(available);
+      } catch {
+        setAvailableAthletes([]);
+      }
+    }
+
+    loadAvailable();
+  }, [showAddForm, teamId, members]);
 
   const handleAddAthlete = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,27 +180,40 @@ export default function GroupDetailPage() {
       {showAddForm && (
         <form onSubmit={handleAddAthlete} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Add Athlete to Squad</h2>
-          <div>
-            <label htmlFor="athleteId" className="block text-sm font-medium text-gray-700 mb-1">
-              Athlete ID *
-            </label>
-            <input
-              type="text"
-              id="athleteId"
-              required
-              value={athleteId}
-              onChange={(e) => setAthleteId(e.target.value)}
-              placeholder="Search or enter athlete ID"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {isSubmitting ? 'Adding...' : 'Add to Squad'}
-          </button>
+          {availableAthletes.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No available athletes. All team roster athletes are already in this squad, or the team has no athletes.
+            </p>
+          ) : (
+            <>
+              <div>
+                <label htmlFor="athleteId" className="block text-sm font-medium text-gray-700 mb-1">
+                  Select Athlete *
+                </label>
+                <select
+                  id="athleteId"
+                  required
+                  value={athleteId}
+                  onChange={(e) => setAthleteId(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Choose an athlete...</option>
+                  {availableAthletes.map((a) => (
+                    <option key={a.athleteId} value={a.athleteId}>
+                      {a.firstName} {a.lastName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                disabled={isSubmitting || !athleteId}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {isSubmitting ? 'Adding...' : 'Add to Squad'}
+              </button>
+            </>
+          )}
         </form>
       )}
 
