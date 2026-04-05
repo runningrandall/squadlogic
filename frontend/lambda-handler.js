@@ -98,8 +98,10 @@ exports.handler = async (event) => {
         proxyRes.on('data', (chunk) => chunks.push(chunk));
         proxyRes.on('end', () => {
           const buf = Buffer.concat(chunks);
+          const contentEncoding = proxyRes.headers['content-encoding'];
           const contentType = proxyRes.headers['content-type'] || '';
-          const isText = /text|json|html|xml|javascript|css|svg/.test(contentType);
+          // If response is compressed OR binary, base64-encode it
+          const isBinary = !!contentEncoding || !/text|json|html|xml|javascript|css|svg/.test(contentType);
 
           const respHeaders = {};
           for (const [k, v] of Object.entries(proxyRes.headers)) {
@@ -109,8 +111,8 @@ exports.handler = async (event) => {
           resolve({
             statusCode: proxyRes.statusCode,
             headers: respHeaders,
-            body: isText ? buf.toString('utf-8') : buf.toString('base64'),
-            isBase64Encoded: !isText,
+            body: isBinary ? buf.toString('base64') : buf.toString('utf-8'),
+            isBase64Encoded: isBinary,
           });
         });
       },
