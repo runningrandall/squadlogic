@@ -17,6 +17,7 @@ export default function NewChallengePage() {
     description: '',
     dueDate: '',
     points: '',
+    routeUrl: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -34,6 +35,7 @@ export default function NewChallengePage() {
         description: form.description,
         dueDate: form.dueDate,
         points: Number(form.points),
+        routeUrl: form.routeUrl.trim() || null,
         teamId,
       });
       router.push(`/teams/${teamId}/challenges`);
@@ -124,6 +126,21 @@ export default function NewChallengePage() {
               min="1"
               value={form.points}
               onChange={handleChange}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="routeUrl" className="block text-sm font-medium text-gray-700 mb-1">
+              Route Link (optional)
+            </label>
+            <input
+              type="url"
+              id="routeUrl"
+              name="routeUrl"
+              value={form.routeUrl}
+              onChange={handleChange}
+              placeholder="e.g. https://www.trailforks.com/route/123 or Strava link"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>

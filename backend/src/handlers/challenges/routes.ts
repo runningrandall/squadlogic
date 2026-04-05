@@ -17,8 +17,9 @@ import { requireOrgContext, requireRole } from '../../lib/middleware.js';
 
 function createChallengeService(): ChallengeService {
   const repository = new ChallengeDynamoRepository();
+  const completionRepository = new ChallengeCompletionDynamoRepository();
   const eventPublisher = new EventBridgePublisher();
-  return new ChallengeService(repository, eventPublisher);
+  return new ChallengeService(repository, eventPublisher, completionRepository);
 }
 
 function createChallengeCompletionService(): ChallengeCompletionService {
@@ -45,7 +46,7 @@ export default async function challengeRoutes(
       }>,
       reply,
     ) => {
-      await requireRole('SuperAdmin', 'OrgAdmin', 'TeamAdmin')(request);
+      await requireRole('SuperAdmin', 'OrgAdmin', 'TeamAdmin', 'TeamManager')(request);
       const dto = validate(CreateChallengeSchema.omit({ teamId: true }), request.body);
       const challenge = await challengeService.createChallenge(
         request.organizationId,
@@ -76,6 +77,23 @@ export default async function challengeRoutes(
         },
       );
       return success(reply, result);
+    },
+  );
+
+  fastify.get(
+    '/teams/:teamId/challenge-stats',
+    async (
+      request: FastifyRequest<{
+        Params: { teamId: string };
+      }>,
+      reply,
+    ) => {
+      await requireOrgContext()(request);
+      const stats = await challengeService.getChallengeStats(
+        request.organizationId,
+        request.params.teamId,
+      );
+      return success(reply, stats);
     },
   );
 

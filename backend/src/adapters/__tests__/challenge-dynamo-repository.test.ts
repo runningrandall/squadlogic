@@ -34,6 +34,7 @@ const mockChallenge = {
   title: 'Sprint Challenge',
   description: 'Run fast',
   dueDate: '2026-04-01',
+  routeUrl: null,
   status: 'active' as const,
   points: 10,
   createdBy: 'user-001',

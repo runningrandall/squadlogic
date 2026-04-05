@@ -119,6 +119,36 @@ describe('CreateChallengeSchema', () => {
       CreateChallengeSchema.parse({ ...validCreateData, teamId: '' }),
     ).toThrow();
   });
+
+  it('applies default routeUrl as null', () => {
+    const result = CreateChallengeSchema.parse(validCreateData);
+    expect(result.routeUrl).toBeNull();
+  });
+
+  it('allows a valid routeUrl', () => {
+    const result = CreateChallengeSchema.parse({
+      ...validCreateData,
+      routeUrl: 'https://www.trailforks.com/route/123',
+    });
+    expect(result.routeUrl).toBe('https://www.trailforks.com/route/123');
+  });
+
+  it('allows null routeUrl explicitly', () => {
+    const result = CreateChallengeSchema.parse({
+      ...validCreateData,
+      routeUrl: null,
+    });
+    expect(result.routeUrl).toBeNull();
+  });
+
+  it('rejects invalid routeUrl', () => {
+    expect(() =>
+      CreateChallengeSchema.parse({
+        ...validCreateData,
+        routeUrl: 'not-a-url',
+      }),
+    ).toThrow();
+  });
 });
 
 describe('UpdateChallengeSchema', () => {
@@ -191,6 +221,29 @@ describe('UpdateChallengeSchema', () => {
   it('rejects non-integer points', () => {
     expect(() =>
       UpdateChallengeSchema.parse({ points: 2.5 }),
+    ).toThrow();
+  });
+
+  it('accepts a valid routeUrl', () => {
+    const result = UpdateChallengeSchema.parse({
+      routeUrl: 'https://www.strava.com/routes/456',
+    });
+    expect(result.routeUrl).toBe('https://www.strava.com/routes/456');
+  });
+
+  it('accepts null routeUrl', () => {
+    const result = UpdateChallengeSchema.parse({ routeUrl: null });
+    expect(result.routeUrl).toBeNull();
+  });
+
+  it('does not include routeUrl when omitted', () => {
+    const result = UpdateChallengeSchema.parse({});
+    expect(result.routeUrl).toBeUndefined();
+  });
+
+  it('rejects invalid routeUrl', () => {
+    expect(() =>
+      UpdateChallengeSchema.parse({ routeUrl: 'not-a-url' }),
     ).toThrow();
   });
 });

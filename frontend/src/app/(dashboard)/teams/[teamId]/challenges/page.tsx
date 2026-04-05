@@ -13,6 +13,7 @@ interface Challenge {
   dueDate: string;
   points: number;
   status: string;
+  routeUrl?: string | null;
 }
 
 function statusBadgeClasses(status: string): string {
@@ -87,14 +88,22 @@ export default function ChallengesPage() {
 
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Challenges</h1>
-        <RoleGuard allowedRoles={['SuperAdmin', 'OrgAdmin', 'TeamAdmin']}>
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push(`/teams/${teamId}/challenges/new`)}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 transition-colors"
+            onClick={() => router.push(`/teams/${teamId}/challenges/stats`)}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            Create Challenge
+            View Stats
           </button>
-        </RoleGuard>
+          <RoleGuard allowedRoles={['SuperAdmin', 'OrgAdmin', 'TeamAdmin']}>
+            <button
+              onClick={() => router.push(`/teams/${teamId}/challenges/new`)}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 transition-colors"
+            >
+              Create Challenge
+            </button>
+          </RoleGuard>
+        </div>
       </div>
 
       {challenges.length === 0 ? (
@@ -121,6 +130,12 @@ export default function ChallengesPage() {
               <div className="flex items-center gap-4 mt-4 text-sm text-gray-400">
                 <span>Due: {new Date(challenge.dueDate).toLocaleDateString()}</span>
                 <span>{challenge.points} pts</span>
+                {challenge.routeUrl && (
+                  <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-label="Has route link">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                )}
               </div>
             </Link>
           ))}
