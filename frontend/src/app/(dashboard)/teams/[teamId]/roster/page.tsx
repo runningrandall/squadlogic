@@ -7,8 +7,9 @@ import { useAuth } from '@/lib/auth-context';
 import { RoleGuard } from '@/components/role-guard';
 
 interface TeamMember {
+  teamMemberId: string;
   memberId: string;
-  type: 'athlete' | 'coach';
+  memberType: 'athlete' | 'coach';
   role: string;
   jerseyNumber?: string;
   status: string;
@@ -70,7 +71,7 @@ export default function RosterPage() {
         const detailsMap: Record<string, MemberDetails> = {};
         const fetchPromises = data.map(async (member) => {
           try {
-            if (member.type === 'athlete') {
+            if (member.memberType === 'athlete') {
               const athlete = await api.get<Athlete>(`/athletes/${member.memberId}`);
               detailsMap[member.memberId] = {
                 firstName: athlete.firstName,
@@ -113,7 +114,7 @@ export default function RosterPage() {
     // Get IDs of members already on the roster for this type
     const existingIds = new Set(
       members
-        .filter((m) => m.type === memberType)
+        .filter((m) => m.memberType === memberType)
         .map((m) => m.memberId),
     );
     try {
@@ -339,11 +340,11 @@ export default function RosterPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      member.type === 'athlete'
+                      member.memberType === 'athlete'
                         ? 'bg-blue-100 text-blue-800'
                         : 'bg-purple-100 text-purple-800'
                     }`}>
-                      {member.type}
+                      {member.memberType}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">{member.role || '-'}</td>

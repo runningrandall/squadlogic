@@ -16,9 +16,7 @@ interface GroupDetail {
 interface GroupMember {
   groupMemberId: string;
   athleteId: string;
-  memberId: string;
-  name: string;
-  type: string;
+  role: string;
   status: string;
 }
 
@@ -40,6 +38,7 @@ export default function GroupDetailPage() {
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [availableAthletes, setAvailableAthletes] = useState<AthleteInfo[]>([]);
+  const [athleteDetailsMap, setAthleteDetailsMap] = useState<Record<string, AthleteInfo>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -56,6 +55,20 @@ export default function GroupDetailPage() {
         ]);
         setGroup(groupData);
         setMembers(membersData);
+
+        // Fetch athlete details for display names
+        const detailsMap: Record<string, AthleteInfo> = {};
+        await Promise.all(
+          membersData.map(async (m) => {
+            try {
+              const a = await api.get<AthleteInfo>(`/athletes/${m.athleteId}`);
+              detailsMap[m.athleteId] = a;
+            } catch {
+              detailsMap[m.athleteId] = { athleteId: m.athleteId, firstName: 'Unknown', lastName: '' };
+            }
+          }),
+        );
+        setAthleteDetailsMap(detailsMap);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load squad');
       } finally {
@@ -81,7 +94,7 @@ export default function GroupDetailPage() {
           .map((m) => m.memberId);
 
         // Get existing squad member IDs
-        const existingIds = new Set(members.map((m) => m.athleteId || m.memberId));
+        const existingIds = new Set(members.map((m) => m.athleteId));
 
         // Fetch athlete details for available ones
         const available: AthleteInfo[] = [];
@@ -225,7 +238,7 @@ export default function GroupDetailPage() {
           <thead>
             <tr className="border-b border-gray-200">
               <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Name</th>
-              <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Type</th>
+              <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Role</th>
               <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Status</th>
             </tr>
           </thead>
@@ -237,12 +250,16 @@ export default function GroupDetailPage() {
                 </td>
               </tr>
             ) : (
-              members.map((member) => (
-                <tr key={member.memberId} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{member.name}</td>
+              members.map((member) => {
+                const details = athleteDetailsMap[member.athleteId];
+                return (
+                <tr key={member.groupMemberId || member.athleteId} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    {details ? `${details.firstName} ${details.lastName}` : member.athleteId}
+                  </td>
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
-                      {member.type}
+                      {member.role}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -255,8 +272,9 @@ export default function GroupDetailPage() {
                     </span>
                   </td>
                 </tr>
-              ))
-            )}
+                );
+              }))
+            }
           </tbody>
         </table>
       </div>
