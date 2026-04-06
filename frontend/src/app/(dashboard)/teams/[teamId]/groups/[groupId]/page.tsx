@@ -355,7 +355,7 @@ export default function GroupDetailPage() {
                       <span className="text-xs text-gray-500">{challenge.points} pts</span>
                     </div>
                     {challenge.description && (
-                      <p className="text-xs text-gray-500 ml-7 mt-0.5">{challenge.description.slice(0, 100)}</p>
+                      <p className="text-sm text-gray-600 ml-7 mt-1">{challenge.description}</p>
                     )}
                     {challenge.routeUrl && (
                       <a href={challenge.routeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline ml-7">

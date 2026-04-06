@@ -37,6 +37,7 @@ function Sidebar() {
   const teamSubItems = selectedTeam
     ? [
         { label: 'Roster', href: `/teams/${selectedTeam.teamId}/roster` },
+        { label: 'Coaches', href: `/teams/${selectedTeam.teamId}/coaches` },
         { label: 'Squads', href: `/teams/${selectedTeam.teamId}/groups` },
         { label: 'Challenges', href: `/teams/${selectedTeam.teamId}/challenges` },
       ]
