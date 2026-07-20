@@ -1,15 +1,17 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as path from 'node:path';
 import type { Construct } from 'constructs';
 
@@ -30,6 +32,9 @@ export class InfraStack extends cdk.Stack {
   public readonly eventBus: events.EventBus;
   public readonly uploadsBucket: s3.Bucket;
   public readonly api: apigwv2.HttpApi;
+  public readonly logoBucket: s3.Bucket;
+  public readonly googleApiSecret: secretsmanager.Secret;
+  public readonly wafWebAcl: wafv2.CfnWebACL;
 
   constructor(scope: Construct, id: string, props: InfraStackProps) {
     super(scope, id, props);
@@ -80,6 +85,126 @@ export class InfraStack extends cdk.Stack {
       autoDeleteObjects: stageName === 'dev',
     });
 
+    // ─── Race Day Wave Schedule Feature Resources ───
+
+    // S3 Bucket for Team Logos (publicly readable for PDFs and UI display)
+    this.logoBucket = new s3.Bucket(this, 'TeamLogoBucket', {
+      bucketName: `switchback-team-logos-${stageName}`,
+      blockPublicAccess: new s3.BlockPublicAccess({
+        blockPublicAcls: false,
+        ignorePublicAcls: false,
+        blockPublicPolicy: false,
+        restrictPublicBuckets: false,
+      }),
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      cors: [
+        {
+          allowedHeaders: ['*'],
+          allowedMethods: [
+            s3.HttpMethods.GET,
+            s3.HttpMethods.PUT,
+            s3.HttpMethods.POST,
+            s3.HttpMethods.DELETE,
+          ],
+          allowedOrigins:
+            stageName === 'dev'
+              ? ['http://localhost:3000']
+              : [`https://*.cloudfront.net`],
+          exposedHeaders: ['ETag'],
+          maxAge: 3600,
+        },
+      ],
+      lifecycleRules: [
+        {
+          id: 'delete-unused-logos',
+          enabled: true,
+          expiration: cdk.Duration.days(365),
+        },
+      ],
+      removalPolicy:
+        stageName === 'dev'
+          ? cdk.RemovalPolicy.DESTROY
+          : cdk.RemovalPolicy.RETAIN,
+      autoDeleteObjects: stageName === 'dev',
+    });
+
+    this.logoBucket.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: 'PublicReadGetObject',
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.AnyPrincipal()],
+        actions: ['s3:GetObject'],
+        resources: [this.logoBucket.arnForObjects('*')],
+      }),
+    );
+
+    // Secrets Manager placeholder for Google API credentials
+    this.googleApiSecret = new secretsmanager.Secret(
+      this,
+      'GoogleApiCredentials',
+      {
+        secretName: 'squadlogic/google-api/credentials',
+        description:
+          'Google API service account credentials for Sheets export',
+        removalPolicy:
+          stageName === 'dev'
+            ? cdk.RemovalPolicy.DESTROY
+            : cdk.RemovalPolicy.RETAIN,
+      },
+    );
+
+    // WAF WebACL with rate limiting for RaceResult import endpoint
+    this.wafWebAcl = new wafv2.CfnWebACL(this, 'ApiWafWebAcl', {
+      name: `TeamManager-WAF-${stageName}`,
+      defaultAction: { allow: {} },
+      scope: 'REGIONAL',
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: `TeamManager-WAF-${stageName}`,
+        sampledRequestsEnabled: true,
+      },
+      rules: [
+        {
+          name: 'RaceResultImportRateLimit',
+          priority: 1,
+          action: {
+            block: {
+              customResponse: {
+                responseCode: 429,
+              },
+            },
+          },
+          statement: {
+            rateBasedStatement: {
+              limit: 100,
+              aggregateKeyType: 'IP',
+              scopeDownStatement: {
+                byteMatchStatement: {
+                  searchString: '/race-events/import',
+                  fieldToMatch: {
+                    uriPath: {},
+                  },
+                  textTransformations: [
+                    {
+                      priority: 0,
+                      type: 'LOWERCASE',
+                    },
+                  ],
+                  positionalConstraint: 'STARTS_WITH',
+                },
+              },
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: `RaceResultImportRateLimit-${stageName}`,
+            sampledRequestsEnabled: true,
+          },
+        },
+      ],
+    });
+
     // ── Lambda Function (Fastify backend) ──
     const backendFn = new NodejsFunction(this, 'BackendFn', {
       functionName: `TeamManager-API-${stageName}`,
@@ -104,6 +229,8 @@ export class InfraStack extends cdk.Stack {
         COGNITO_CLIENT_ID: props.userPoolClientId,
         POLICY_STORE_ID: props.policyStoreId,
         UPLOADS_BUCKET: this.uploadsBucket.bucketName,
+        LOGO_BUCKET_NAME: this.logoBucket.bucketName,
+        GOOGLE_CREDENTIALS_SECRET_ARN: this.googleApiSecret.secretArn,
       },
     });
 
@@ -111,6 +238,8 @@ export class InfraStack extends cdk.Stack {
     this.table.grantReadWriteData(backendFn);
     this.eventBus.grantPutEventsTo(backendFn);
     this.uploadsBucket.grantReadWrite(backendFn);
+    this.logoBucket.grantReadWrite(backendFn);
+    this.googleApiSecret.grantRead(backendFn);
 
     backendFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -145,7 +274,6 @@ export class InfraStack extends cdk.Stack {
       integration,
     });
 
-    // Root route for /health
     this.api.addRoutes({
       path: '/',
       methods: [apigwv2.HttpMethod.GET],
@@ -201,6 +329,26 @@ export class InfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: this.api.url!,
       description: 'API Gateway URL',
+    });
+
+    new cdk.CfnOutput(this, 'LogoBucketName', {
+      value: this.logoBucket.bucketName,
+      description: 'S3 Bucket for Team Logos',
+    });
+
+    new cdk.CfnOutput(this, 'LogoBucketArn', {
+      value: this.logoBucket.bucketArn,
+      description: 'S3 Bucket ARN for Team Logos',
+    });
+
+    new cdk.CfnOutput(this, 'GoogleApiSecretArn', {
+      value: this.googleApiSecret.secretArn,
+      description: 'Secrets Manager ARN for Google API credentials',
+    });
+
+    new cdk.CfnOutput(this, 'WafWebAclArn', {
+      value: this.wafWebAcl.attrArn,
+      description: 'WAF WebACL ARN for API rate limiting',
     });
   }
 }

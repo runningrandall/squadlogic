@@ -92,6 +92,10 @@ function Sidebar() {
         <Link href="/coaches" className={linkClasses('/coaches')}>
           Coaches
         </Link>
+
+        <Link href="/race-day" className={linkClasses('/race-day', false)}>
+          Race Day
+        </Link>
       </nav>
 
       {user && (
