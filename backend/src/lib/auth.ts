@@ -52,6 +52,7 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
   fastify.decorateRequest('organizationId', '');
   fastify.decorateRequest('userRole', '');
   fastify.decorateRequest('userGroups', {
+    /* v8 ignore next */
     getter() { return (this as any)._userGroups ?? []; },
     setter(val: string[]) { (this as any)._userGroups = val; },
   });

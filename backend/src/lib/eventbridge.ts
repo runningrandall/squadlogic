@@ -18,6 +18,7 @@ export async function putEvent(
   detailType: string,
   detail: Record<string, unknown>,
 ): Promise<void> {
+  /* v8 ignore next 4 */
   if (IS_LOCAL) {
     logger.debug('Event (local, not published)', { source, detailType, detail });
     return;

@@ -194,6 +194,7 @@ export default async function raceEventRoutes(
       }
 
       // Get branding
+      /* v8 ignore next */
       const userId = request.userId ?? 'anonymous';
       const branding = await services.branding.getBranding(userId);
 

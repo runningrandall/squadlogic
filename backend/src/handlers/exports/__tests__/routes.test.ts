@@ -72,5 +72,14 @@ describe('Export routes', () => {
       });
       expect(res.statusCode).toBe(401);
     });
+
+    it('re-throws unexpected errors', async () => {
+      mockSheetsService.exportSchedule.mockRejectedValue(new Error('Network timeout'));
+      const res = await app.inject({
+        method: 'POST', url: '/race-events/411620/export/sheets', headers,
+        payload: { schedule: sampleSchedule },
+      });
+      expect(res.statusCode).toBe(500);
+    });
   });
 });
