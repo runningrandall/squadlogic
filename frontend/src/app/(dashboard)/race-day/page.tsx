@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 
 type Step = 'url' | 'team' | 'schedule';
@@ -65,6 +66,7 @@ export default function RaceDayPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [sheetsUrl, setSheetsUrl] = useState<string | null>(null);
 
   async function handleImport() {
     setError(null);
@@ -151,14 +153,22 @@ export default function RaceDayPage() {
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Race Day Schedule</h1>
-        {step !== 'url' && (
-          <button
-            onClick={handleReset}
-            className="text-sm text-gray-500 hover:text-gray-700"
+        <div className="flex items-center gap-4">
+          <Link
+            href="/race-day/branding"
+            className="text-sm text-blue-600 hover:text-blue-800"
           >
-            Start Over
-          </button>
-        )}
+            Team Branding
+          </Link>
+          {step !== 'url' && (
+            <button
+              onClick={handleReset}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Start Over
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Step Indicator */}
@@ -276,14 +286,50 @@ export default function RaceDayPage() {
                   {isExporting ? 'Exporting...' : 'Export PDF'}
                 </button>
                 <button
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
-                  onClick={() => setError('Google Sheets export coming soon')}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 text-sm font-medium"
+                  disabled={isExporting}
+                  onClick={async () => {
+                    if (!schedule || !importResult) return;
+                    setIsExporting(true);
+                    setError(null);
+                    setSheetsUrl(null);
+                    try {
+                      const result = await api.post<{ spreadsheetUrl: string }>(
+                        `/race-events/${importResult.eventId}/export/sheets`,
+                        { schedule },
+                      );
+                      setSheetsUrl(result.spreadsheetUrl);
+                    } catch (err) {
+                      setError(
+                        err instanceof Error
+                          ? err.message
+                          : 'Google Sheets export failed. Try PDF export instead.',
+                      );
+                    } finally {
+                      setIsExporting(false);
+                    }
+                  }}
                 >
                   Export Sheets
                 </button>
               </div>
             </div>
           </div>
+
+          {/* Sheets URL */}
+          {sheetsUrl && (
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-sm">
+              Google Sheet created:{' '}
+              <a
+                href={sheetsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-green-700 underline font-medium"
+              >
+                Open Spreadsheet
+              </a>
+            </div>
+          )}
 
           {/* Wave Schedule Table */}
           {schedule.waves.length === 0 ? (
