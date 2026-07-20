@@ -70,4 +70,14 @@ describe('RaceResultClient', () => {
       );
     });
   });
+
+  describe('error handling', () => {
+    it('rethrows non-abort, non-HTTP errors', async () => {
+      vi.mocked(globalThis.fetch).mockRejectedValue(new Error('Network failure'));
+      const client = new RaceResultClient();
+      await expect(
+        client.fetchEventPage('https://my.raceresult.com/411620/'),
+      ).rejects.toThrow('Network failure');
+    });
+  });
 });
