@@ -17,6 +17,16 @@ export class FetchHttpError extends Error {
   }
 }
 
+export interface RaceResultConfig {
+  key: string;
+  server: string;
+  eventname: string;
+  contests: Record<string, string>;
+  TabConfig?: {
+    Lists?: Array<{ Name: string; Mode: string; ID: string }>;
+  };
+}
+
 export class RaceResultClient implements RaceResultPort {
   private readonly timeoutMs: number;
 
@@ -28,11 +38,19 @@ export class RaceResultClient implements RaceResultPort {
     return this.fetchWithTimeout(url);
   }
 
+  async fetchEventConfig(eventId: string): Promise<RaceResultConfig> {
+    const url = `https://my.raceresult.com/${eventId}/participants/config?lang=en`;
+    const text = await this.fetchWithTimeout(url);
+    return JSON.parse(text) as RaceResultConfig;
+  }
+
   async fetchParticipants(
     eventId: string,
     apiKey: string,
     listName: string,
+    server?: string,
   ): Promise<string> {
+    const host = server ?? 'my-us-1.raceresult.com';
     const params = new URLSearchParams({
       key: apiKey,
       listname: listName,
@@ -42,7 +60,7 @@ export class RaceResultClient implements RaceResultPort {
       l: '0',
     });
 
-    const url = `https://my-us-1.raceresult.com/${eventId}/participants/list?${params.toString()}`;
+    const url = `https://${host}/${eventId}/participants/list?${params.toString()}`;
     return this.fetchWithTimeout(url);
   }
 

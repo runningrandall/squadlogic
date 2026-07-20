@@ -6,6 +6,7 @@ export interface RaceResultPort {
     eventId: string,
     apiKey: string,
     listName: string,
+    server?: string,
   ): Promise<string>;
 }
 

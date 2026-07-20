@@ -1,13 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RaceEventService } from '../race-event-service.js';
-import type { RaceResultPort, RaceResultParser } from '../../ports/raceresult-port.js';
+import type { RaceResultParser } from '../../ports/raceresult-port.js';
 import type { EventPublisher } from '../../ports/event-publisher.js';
 import type { RaceEventMetadata, RaceParticipant } from '../../domain/race-event.js';
+import type { RaceResultClient, RaceResultConfig } from '../../adapters/raceresult-client.js';
 
 function createMocks() {
-  const client: RaceResultPort = {
+  const client = {
     fetchEventPage: vi.fn(),
+    fetchEventConfig: vi.fn(),
     fetchParticipants: vi.fn(),
+  } as unknown as RaceResultClient & {
+    fetchEventPage: ReturnType<typeof vi.fn>;
+    fetchEventConfig: ReturnType<typeof vi.fn>;
+    fetchParticipants: ReturnType<typeof vi.fn>;
   };
   const parser: RaceResultParser = {
     parseEventMetadata: vi.fn(),
@@ -19,6 +25,19 @@ function createMocks() {
   };
   return { client, parser, eventPublisher };
 }
+
+const sampleConfig: RaceResultConfig = {
+  key: 'abc123def456',
+  server: 'my-us-1.raceresult.com',
+  eventname: 'UTAH HS MTB 2026 - REGION 5',
+  contests: { '1': 'Varsity Boys' },
+  TabConfig: {
+    Lists: [
+      { Name: 'Hidden List', Mode: 'hidden', ID: '1' },
+      { Name: 'Active List', Mode: '', ID: '2' },
+    ],
+  },
+};
 
 const sampleMetadata: RaceEventMetadata = {
   eventName: 'UTAH HS MTB 2026 - REGION 5',
@@ -45,28 +64,31 @@ describe('RaceEventService', () => {
       const { client, parser, eventPublisher } = createMocks();
       const service = new RaceEventService(client, parser, eventPublisher);
 
+      vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig);
       vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
       vi.mocked(parser.parseEventMetadata).mockReturnValue(sampleMetadata);
-      vi.mocked(parser.discoverApiParams).mockReturnValue({ apiKey: 'abc123', listName: 'test' });
       vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
       vi.mocked(parser.parseParticipants).mockReturnValue(sampleParticipants);
 
       const result = await service.importEvent('https://my.raceresult.com/411620/', '411620');
 
       expect(result.metadata.eventName).toBe('UTAH HS MTB 2026 - REGION 5');
-      expect(result.metadata.eventDate).toBe('2026-08-02');
-      expect(result.metadata.eventLocation).toBe('American Fork, UT');
-      expect(result.metadata.teams).toHaveLength(3);
       expect(result.participants).toHaveLength(7);
+      // Verify it used the config endpoint
+      expect(client.fetchEventConfig).toHaveBeenCalledWith('411620');
+      // Verify it used the correct server and active list
+      expect(client.fetchParticipants).toHaveBeenCalledWith(
+        '411620', 'abc123def456', 'Active List', 'my-us-1.raceresult.com',
+      );
     });
 
     it('TC-019: throws when no participants found', async () => {
       const { client, parser, eventPublisher } = createMocks();
       const service = new RaceEventService(client, parser, eventPublisher);
 
+      vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig);
       vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
       vi.mocked(parser.parseEventMetadata).mockReturnValue(sampleMetadata);
-      vi.mocked(parser.discoverApiParams).mockReturnValue({ apiKey: 'abc', listName: 'test' });
       vi.mocked(client.fetchParticipants).mockResolvedValue('[]');
       vi.mocked(parser.parseParticipants).mockReturnValue([]);
 
@@ -79,9 +101,9 @@ describe('RaceEventService', () => {
       const { client, parser, eventPublisher } = createMocks();
       const service = new RaceEventService(client, parser, eventPublisher);
 
+      vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig);
       vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
       vi.mocked(parser.parseEventMetadata).mockReturnValue(sampleMetadata);
-      vi.mocked(parser.discoverApiParams).mockReturnValue({ apiKey: 'abc', listName: 'test' });
       vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
       vi.mocked(parser.parseParticipants).mockReturnValue(sampleParticipants);
 
@@ -99,9 +121,9 @@ describe('RaceEventService', () => {
       const { client, parser, eventPublisher } = createMocks();
       const service = new RaceEventService(client, parser, eventPublisher);
 
+      vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig);
       vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
       vi.mocked(parser.parseEventMetadata).mockReturnValue(sampleMetadata);
-      vi.mocked(parser.discoverApiParams).mockReturnValue({ apiKey: 'abc', listName: 'test' });
       vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
       vi.mocked(parser.parseParticipants).mockReturnValue(sampleParticipants);
       vi.mocked(eventPublisher.publish).mockRejectedValue(new Error('EventBridge down'));

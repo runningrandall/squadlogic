@@ -1,6 +1,7 @@
 import type { RaceEventMetadata, RaceParticipant } from '../domain/race-event.js';
-import type { RaceResultPort, RaceResultParser } from '../ports/raceresult-port.js';
+import type { RaceResultParser } from '../ports/raceresult-port.js';
 import type { EventPublisher } from '../ports/event-publisher.js';
+import type { RaceResultClient } from '../adapters/raceresult-client.js';
 
 export interface RaceEventImportResult {
   metadata: RaceEventMetadata;
@@ -9,7 +10,7 @@ export interface RaceEventImportResult {
 
 export class RaceEventService {
   constructor(
-    private readonly client: RaceResultPort,
+    private readonly client: RaceResultClient,
     private readonly parser: RaceResultParser,
     private readonly eventPublisher: EventPublisher,
   ) {}
@@ -18,22 +19,29 @@ export class RaceEventService {
     url: string,
     eventId: string,
   ): Promise<RaceEventImportResult> {
-    // Phase 1: Fetch page and parse metadata
+    // Phase 1: Fetch config from the RaceResult config endpoint (returns key, server, lists)
+    const config = await this.client.fetchEventConfig(eventId);
+
+    // Phase 2: Fetch the HTML page for teams dropdown and additional metadata
     const html = await this.client.fetchEventPage(url);
     const metadata = this.parser.parseEventMetadata(html, eventId, url);
 
-    // Phase 2: Discover API params and fetch participants
-    const apiParams = this.parser.discoverApiParams(html);
-    let participants: RaceParticipant[] = [];
-
-    if (apiParams) {
-      const responseBody = await this.client.fetchParticipants(
-        eventId,
-        apiParams.apiKey,
-        apiParams.listName,
-      );
-      participants = this.parser.parseParticipants(responseBody);
+    // Override event name from config if available (more reliable than HTML scraping)
+    if (config.eventname) {
+      metadata.eventName = config.eventname;
     }
+
+    // Phase 3: Find the active list and fetch participants
+    const activeList = config.TabConfig?.Lists?.find((l) => l.Mode !== 'hidden');
+    const listName = activeList?.Name ?? '';
+
+    const responseBody = await this.client.fetchParticipants(
+      eventId,
+      config.key,
+      listName,
+      config.server,
+    );
+    const participants = this.parser.parseParticipants(responseBody);
 
     if (participants.length === 0) {
       throw new Error('No participants found for this event.');
