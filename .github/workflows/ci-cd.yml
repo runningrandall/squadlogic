@@ -8,12 +8,21 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
+  issues: write
+  pull-requests: write
 
 env:
   NODE_VERSION: '22'
-  PNPM_VERSION: '9'
   AWS_REGION: us-east-1
+
+# ════════════════════════════════════════════════
+# Pipeline flow:
+#
+#   PR (dev -> main):    lint + test -> build -> deploy-dev
+#   Push to main:        lint + test -> build -> release -> deploy-prod
+#
+# ════════════════════════════════════════════════
 
 jobs:
   # ──────────────────────────────────────────────
@@ -24,58 +33,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
-
-      - name: Lint backend
-        run: pnpm --filter backend run lint
-
-      - name: Lint frontend
-        run: pnpm --filter frontend run lint
-
-      - name: Lint infra
-        run: pnpm --filter infra run lint
+      - run: pnpm --filter backend run lint
+      - run: pnpm --filter frontend run lint
+      - run: pnpm --filter infra run lint
 
   # ──────────────────────────────────────────────
-  # Test all workspaces with coverage validation
+  # Test all workspaces with coverage
   # ──────────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
-
-      - name: Test backend (95% coverage)
+      - name: Backend tests (95% coverage)
         run: pnpm --filter backend run test:coverage
-
-      - name: Test frontend
+      - name: Frontend tests
         run: pnpm --filter frontend run test || true
-
-      - name: Test infra
+      - name: Infra tests
         run: pnpm --filter infra run test
 
   # ──────────────────────────────────────────────
-  # Build all workspaces
+  # Build + CDK synth
   # ──────────────────────────────────────────────
   build:
     name: Build
@@ -83,37 +73,31 @@ jobs:
     needs: [lint, test]
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
-
-      - name: Build backend
-        run: pnpm --filter backend run build
-
+      - run: pnpm --filter backend run build
       - name: Build frontend
-        run: pnpm --filter frontend run build
-
-      - name: Synthesize CDK (dev)
+        run: |
+          pnpm --filter frontend run build
+          cp frontend/lambda-handler.js frontend/.next/standalone/lambda-handler.js
+      - name: CDK synth (dev)
         if: github.event_name == 'pull_request'
-        run: pnpm --filter infra run synth -- -c stageName=dev
-
-      - name: Synthesize CDK (prod)
+        working-directory: infra
+        run: npx cdk synth -c stageName=dev
+      - name: CDK synth (prod)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: pnpm --filter infra run synth -- -c stageName=prod
+        working-directory: infra
+        run: npx cdk synth -c stageName=prod
 
   # ──────────────────────────────────────────────
-  # Deploy to dev (PR from dev → main)
+  # Deploy DEV (PR from dev -> main)
   # ──────────────────────────────────────────────
   deploy-dev:
-    name: Deploy to Dev
+    name: Deploy Dev
     runs-on: ubuntu-latest
     needs: [build]
     if: github.event_name == 'pull_request' && github.head_ref == 'dev'
@@ -123,66 +107,121 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
 
+      # ── Assume AWS role ──
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Build backend
         run: pnpm --filter backend run build
 
-      - name: Build frontend
-        run: pnpm --filter frontend run build
-
-      - name: Deploy CDK stacks (dev)
-        run: >
-          pnpm --filter infra run deploy --
-          -c stageName=dev
-          --require-approval never
-
-      - name: Upload frontend to S3
+      # ── Deploy Auth + Infra stacks first (creates Cognito, API Gateway, etc.) ──
+      - name: Deploy Auth & Infra stacks
+        working-directory: infra
         run: |
-          BUCKET_NAME=$(aws cloudformation describe-stacks \
+          npx cdk deploy TeamManager-Auth-dev TeamManager-Infra-dev \
+            -c stageName=dev \
+            -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} \
+            -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+            --require-approval never
+
+      # ── Fetch CDK outputs (Cognito IDs, table name, etc.) ──
+      - name: Fetch stack outputs
+        id: outputs
+        run: |
+          get_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "$1" \
+              --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue" \
+              --output text
+          }
+          echo "USER_POOL_ID=$(get_output TeamManager-Auth-dev UserPoolId)" >> $GITHUB_OUTPUT
+          echo "USER_POOL_CLIENT_ID=$(get_output TeamManager-Auth-dev UserPoolClientId)" >> $GITHUB_OUTPUT
+          echo "COGNITO_DOMAIN=$(get_output TeamManager-Auth-dev UserPoolDomain)" >> $GITHUB_OUTPUT
+          echo "API_URL=$(get_output TeamManager-Infra-dev ApiUrl)" >> $GITHUB_OUTPUT
+
+      # ── Build frontend with CDK outputs injected (standalone mode) ──
+      - name: Build frontend
+        env:
+          NEXT_PUBLIC_API_URL: ${{ steps.outputs.outputs.API_URL }}
+          NEXT_PUBLIC_USER_POOL_ID: ${{ steps.outputs.outputs.USER_POOL_ID }}
+          NEXT_PUBLIC_USER_POOL_CLIENT_ID: ${{ steps.outputs.outputs.USER_POOL_CLIENT_ID }}
+          NEXT_PUBLIC_COGNITO_DOMAIN: ${{ steps.outputs.outputs.COGNITO_DOMAIN }}
+          NEXT_PUBLIC_REDIRECT_SIGN_IN: ${{ vars.APP_URL }}
+          NEXT_PUBLIC_REDIRECT_SIGN_OUT: ${{ vars.APP_URL }}
+          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
+        run: |
+          pnpm --filter frontend run build
+          cp frontend/lambda-handler.js frontend/.next/standalone/lambda-handler.js
+
+      # ── Deploy Frontend stack (Lambda with standalone build) ──
+      - name: Deploy Frontend stack
+        working-directory: infra
+        run: |
+          npx cdk deploy TeamManager-Frontend-dev \
+            -c stageName=dev \
+            --require-approval never
+
+      # ── Sync static assets to S3 + invalidate CDN ──
+      - name: Deploy static assets
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-dev \
             --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
             --output text)
-          aws s3 sync frontend/out/ "s3://${BUCKET_NAME}" --delete
+          aws s3 sync frontend/.next/static/ "s3://${BUCKET}/_next/static/" --cache-control "public,max-age=31536000,immutable"
 
-      - name: Invalidate CloudFront cache
-        run: |
-          DISTRIBUTION_DOMAIN=$(aws cloudformation describe-stacks \
+          DOMAIN=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-dev \
             --query "Stacks[0].Outputs[?OutputKey=='DistributionDomainName'].OutputValue" \
             --output text)
-          DISTRIBUTION_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?DomainName=='${DISTRIBUTION_DOMAIN}'].Id" \
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?DomainName=='${DOMAIN}'].Id" \
             --output text)
-          if [ -n "$DISTRIBUTION_ID" ]; then
-            aws cloudfront create-invalidation \
-              --distribution-id "$DISTRIBUTION_ID" \
-              --paths "/*"
-          fi
+          [ -n "$DIST_ID" ] && aws cloudfront create-invalidation \
+            --distribution-id "$DIST_ID" --paths "/*"
 
   # ──────────────────────────────────────────────
-  # Deploy to prod (merge to main)
+  # Semantic Release (push to main)
   # ──────────────────────────────────────────────
-  deploy-prod:
-    name: Deploy to Prod
+  release:
+    name: Release
     runs-on: ubuntu-latest
     needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Semantic Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
+  # ──────────────────────────────────────────────
+  # Deploy PROD (after release, on push to main)
+  # ──────────────────────────────────────────────
+  deploy-prod:
+    name: Deploy Prod
+    runs-on: ubuntu-latest
+    needs: [release]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
     concurrency:
@@ -190,55 +229,86 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
 
+      # ── Assume AWS role ──
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Build backend
         run: pnpm --filter backend run build
 
-      - name: Build frontend
-        run: pnpm --filter frontend run build
-
-      - name: Deploy CDK stacks (prod)
-        run: >
-          pnpm --filter infra run deploy --
-          -c stageName=prod
-          --require-approval never
-
-      - name: Upload frontend to S3
+      # ── Deploy Auth + Infra stacks first ──
+      - name: Deploy Auth & Infra stacks
+        working-directory: infra
         run: |
-          BUCKET_NAME=$(aws cloudformation describe-stacks \
+          npx cdk deploy TeamManager-Auth-prod TeamManager-Infra-prod \
+            -c stageName=prod \
+            -c googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} \
+            -c googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+            --require-approval never
+
+      # ── Fetch CDK outputs ──
+      - name: Fetch stack outputs
+        id: outputs
+        run: |
+          get_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "$1" \
+              --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue" \
+              --output text
+          }
+          echo "USER_POOL_ID=$(get_output TeamManager-Auth-prod UserPoolId)" >> $GITHUB_OUTPUT
+          echo "USER_POOL_CLIENT_ID=$(get_output TeamManager-Auth-prod UserPoolClientId)" >> $GITHUB_OUTPUT
+          echo "COGNITO_DOMAIN=$(get_output TeamManager-Auth-prod UserPoolDomain)" >> $GITHUB_OUTPUT
+          echo "API_URL=$(get_output TeamManager-Infra-prod ApiUrl)" >> $GITHUB_OUTPUT
+
+      # ── Build frontend with CDK outputs (standalone mode) ──
+      - name: Build frontend
+        env:
+          NEXT_PUBLIC_API_URL: ${{ steps.outputs.outputs.API_URL }}
+          NEXT_PUBLIC_USER_POOL_ID: ${{ steps.outputs.outputs.USER_POOL_ID }}
+          NEXT_PUBLIC_USER_POOL_CLIENT_ID: ${{ steps.outputs.outputs.USER_POOL_CLIENT_ID }}
+          NEXT_PUBLIC_COGNITO_DOMAIN: ${{ steps.outputs.outputs.COGNITO_DOMAIN }}
+          NEXT_PUBLIC_REDIRECT_SIGN_IN: ${{ vars.APP_URL }}
+          NEXT_PUBLIC_REDIRECT_SIGN_OUT: ${{ vars.APP_URL }}
+          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
+        run: |
+          pnpm --filter frontend run build
+          cp frontend/lambda-handler.js frontend/.next/standalone/lambda-handler.js
+
+      # ── Deploy Frontend stack (Lambda with standalone build) ──
+      - name: Deploy Frontend stack
+        working-directory: infra
+        run: |
+          npx cdk deploy TeamManager-Frontend-prod \
+            -c stageName=prod \
+            --require-approval never
+
+      # ── Sync static assets to S3 + invalidate CDN ──
+      - name: Deploy static assets
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-prod \
             --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
             --output text)
-          aws s3 sync frontend/out/ "s3://${BUCKET_NAME}" --delete
+          aws s3 sync frontend/.next/static/ "s3://${BUCKET}/_next/static/" --cache-control "public,max-age=31536000,immutable"
 
-      - name: Invalidate CloudFront cache
-        run: |
-          DISTRIBUTION_DOMAIN=$(aws cloudformation describe-stacks \
+          DOMAIN=$(aws cloudformation describe-stacks \
             --stack-name TeamManager-Frontend-prod \
             --query "Stacks[0].Outputs[?OutputKey=='DistributionDomainName'].OutputValue" \
             --output text)
-          DISTRIBUTION_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?DomainName=='${DISTRIBUTION_DOMAIN}'].Id" \
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?DomainName=='${DOMAIN}'].Id" \
             --output text)
-          if [ -n "$DISTRIBUTION_ID" ]; then
-            aws cloudfront create-invalidation \
-              --distribution-id "$DISTRIBUTION_ID" \
-              --paths "/*"
-          fi
+          [ -n "$DIST_ID" ] && aws cloudfront create-invalidation \
+            --distribution-id "$DIST_ID" --paths "/*"

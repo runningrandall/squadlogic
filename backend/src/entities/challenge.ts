@@ -35,6 +35,10 @@ export const ChallengeEntity = new Entity(
         required: false,
         default: undefined,
       },
+      routeUrl: {
+        type: 'string',
+        required: false,
+      },
       status: {
         type: ['active', 'completed', 'archived'] as const,
         required: true,

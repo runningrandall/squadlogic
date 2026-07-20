@@ -14,7 +14,12 @@ async function getAuthToken(): Promise<string | undefined> {
 async function getOrganizationId(): Promise<string | undefined> {
   try {
     const session = await fetchAuthSession();
-    return session.tokens?.accessToken?.payload?.['custom:organizationId'] as string | undefined;
+    // Try access token first, then ID token (custom attrs may only be in ID token)
+    return (
+      (session.tokens?.accessToken?.payload?.['custom:organizationId'] as string) ||
+      (session.tokens?.idToken?.payload?.['custom:organizationId'] as string) ||
+      undefined
+    );
   } catch {
     return undefined;
   }

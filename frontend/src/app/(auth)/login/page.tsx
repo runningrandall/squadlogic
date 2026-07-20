@@ -1,18 +1,25 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signInWithRedirect } from 'aws-amplify/auth';
+import { signInWithRedirect, signOut as amplifySignOut } from 'aws-amplify/auth';
 import { useAuth } from '@/lib/auth-context';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, isAuthenticated, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.replace('/dashboard');
+    }
+  }, [isLoading, isAuthenticated, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -29,10 +36,20 @@ export default function LoginPage() {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sign in failed';
+
       if (message.includes('UserNotConfirmedException')) {
         router.push(`/confirm?email=${encodeURIComponent(email)}`);
         return;
       }
+
+      // If there's already a signed-in user, sign them out and retry
+      if (message.includes('already a signed in user')) {
+        await amplifySignOut();
+        setError('Previous session cleared. Please sign in again.');
+        setIsSubmitting(false);
+        return;
+      }
+
       setError(
         message.includes('NotAuthorizedException')
           ? 'Incorrect email or password'
@@ -43,6 +60,12 @@ export default function LoginPage() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (isLoading || isAuthenticated) {
+    return (
+      <div className="text-center text-gray-500">Loading...</div>
+    );
   }
 
   return (

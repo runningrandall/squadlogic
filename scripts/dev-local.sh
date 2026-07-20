@@ -7,6 +7,14 @@ PID_FILE="$ROOT_DIR/.dev-pids"
 
 cd "$ROOT_DIR"
 
+# Load .env if present
+if [ -f "$ROOT_DIR/.env" ]; then
+  set -a
+  source "$ROOT_DIR/.env"
+  set +a
+  echo "Loaded .env"
+fi
+
 # Clean up any stale processes
 bash "$SCRIPT_DIR/dev-stop.sh" 2>/dev/null || true
 
@@ -45,20 +53,28 @@ node scripts/seed-local-db.js
 echo "[5/5] Starting services..."
 echo ""
 
-# Start backend
+# Start backend (env vars come from .env, with defaults as fallback)
 cd "$ROOT_DIR/backend"
-DYNAMODB_ENDPOINT=http://localhost:8000 \
-TABLE_NAME=TeamManager-Table-dev \
-EVENT_BUS_NAME=local-events \
-NODE_ENV=development \
-PORT=3001 \
+DYNAMODB_ENDPOINT="${DYNAMODB_ENDPOINT:-http://localhost:8000}" \
+TABLE_NAME="${TABLE_NAME:-TeamManager-Table-dev}" \
+EVENT_BUS_NAME="${EVENT_BUS_NAME:-local-events}" \
+NODE_ENV="${NODE_ENV:-development}" \
+PORT="${PORT:-3001}" \
+COGNITO_USER_POOL_ID="${COGNITO_USER_POOL_ID:-}" \
+COGNITO_CLIENT_ID="${COGNITO_CLIENT_ID:-}" \
+POLICY_STORE_ID="${POLICY_STORE_ID:-}" \
 npx tsx watch src/server.ts > /tmp/squadlogic-backend.log 2>&1 &
 BACKEND_PID=$!
 cd "$ROOT_DIR"
 
-# Start frontend
+# Start frontend (env vars come from .env, with defaults as fallback)
 cd "$ROOT_DIR/frontend"
-NEXT_PUBLIC_API_URL=http://localhost:3001 \
+NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:3001}" \
+NEXT_PUBLIC_USER_POOL_ID="${NEXT_PUBLIC_USER_POOL_ID:-}" \
+NEXT_PUBLIC_USER_POOL_CLIENT_ID="${NEXT_PUBLIC_USER_POOL_CLIENT_ID:-}" \
+NEXT_PUBLIC_COGNITO_DOMAIN="${NEXT_PUBLIC_COGNITO_DOMAIN:-}" \
+NEXT_PUBLIC_REDIRECT_SIGN_IN="${NEXT_PUBLIC_REDIRECT_SIGN_IN:-http://localhost:3000/}" \
+NEXT_PUBLIC_REDIRECT_SIGN_OUT="${NEXT_PUBLIC_REDIRECT_SIGN_OUT:-http://localhost:3000/}" \
 npx next dev > /tmp/squadlogic-frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd "$ROOT_DIR"

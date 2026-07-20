@@ -68,8 +68,15 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
         request.userId = payload.sub;
         request.userGroups = (payload['cognito:groups'] as string[]) ?? [];
         request.userRole = getHighestRole(request.userGroups);
-        request.organizationId = (payload['custom:organizationId'] as string) ?? '';
-        request.teamId = (payload['custom:teamId'] as string) ?? undefined;
+        // Try JWT claim first, fall back to header (for cases where token hasn't refreshed yet)
+        request.organizationId =
+          (payload['custom:organizationId'] as string) ||
+          (request.headers['x-organization-id'] as string) ||
+          '';
+        request.teamId =
+          (payload['custom:teamId'] as string) ||
+          (request.headers['x-team-id'] as string) ||
+          undefined;
       } catch {
         return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or expired token', statusCode: 401 });
       }

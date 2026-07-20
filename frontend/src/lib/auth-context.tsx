@@ -55,18 +55,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
+    // Skip auth check during SSR — Amplify needs browser localStorage
+    if (typeof window === 'undefined') return;
+
     try {
       const currentUser = await getCurrentUser();
       const session = await fetchAuthSession();
-      const payload = session.tokens?.accessToken?.payload;
+      const accessPayload = session.tokens?.accessToken?.payload;
+      const idPayload = session.tokens?.idToken?.payload;
 
-      const groups = (payload?.['cognito:groups'] as string[]) ?? [];
-      const organizationId = (payload?.['custom:organizationId'] as string) ?? undefined;
-      const teamId = (payload?.['custom:teamId'] as string) ?? undefined;
+      const groups = (accessPayload?.['cognito:groups'] as string[]) ?? [];
+      // Try access token first (V2 trigger), then ID token (always has custom attrs)
+      const organizationId =
+        (accessPayload?.['custom:organizationId'] as string) ||
+        (idPayload?.['custom:organizationId'] as string) ||
+        undefined;
+      const teamId =
+        (accessPayload?.['custom:teamId'] as string) ||
+        (idPayload?.['custom:teamId'] as string) ||
+        undefined;
 
       setUser({
         userId: currentUser.userId,
-        email: currentUser.signInDetails?.loginId ?? '',
+        email: currentUser.signInDetails?.loginId ?? (idPayload?.email as string) ?? '',
         organizationId,
         teamId,
         role: getHighestRole(groups),

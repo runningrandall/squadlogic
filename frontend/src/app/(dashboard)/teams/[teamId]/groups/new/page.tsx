@@ -1,5 +1,4 @@
 'use client';
-
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -8,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { RoleGuard } from '@/components/role-guard';
 
 export default function NewGroupPage() {
-  const { teamId } = useParams<{ teamId: string }>();
+  const { teamId } = useParams() as { teamId: string };
   useAuth();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -16,6 +15,7 @@ export default function NewGroupPage() {
   const [form, setForm] = useState({
     name: '',
     description: '',
+    aliases: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -31,10 +31,13 @@ export default function NewGroupPage() {
       await api.post(`/teams/${teamId}/groups`, {
         name: form.name,
         description: form.description,
+        aliases: form.aliases
+          ? form.aliases.split(',').map((a) => a.trim()).filter(Boolean)
+          : [],
       });
       router.push(`/teams/${teamId}/groups`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create group');
+      setError(err instanceof Error ? err.message : 'Failed to create squad');
     } finally {
       setIsSubmitting(false);
     }
@@ -45,16 +48,16 @@ export default function NewGroupPage() {
       allowedRoles={['SuperAdmin', 'OrgAdmin', 'OrgManager', 'TeamAdmin', 'TeamManager']}
       fallback={
         <div className="text-center py-12 text-gray-500">
-          You do not have permission to create groups.
+          You do not have permission to create squads.
         </div>
       }
     >
       <div className="max-w-2xl">
         <div className="mb-8">
           <Link href={`/teams/${teamId}/groups`} className="text-sm text-blue-600 hover:underline">
-            &larr; Back to Groups
+            &larr; Back to Squads
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900 mt-2">Create Group</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mt-2">Create Squad</h1>
         </div>
 
         {error && (
@@ -66,7 +69,7 @@ export default function NewGroupPage() {
         <form onSubmit={handleSubmit} className="space-y-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-              Group Name *
+              Squad Name *
             </label>
             <input
               type="text"
@@ -93,13 +96,29 @@ export default function NewGroupPage() {
             />
           </div>
 
+          <div>
+            <label htmlFor="aliases" className="block text-sm font-medium text-gray-700 mb-1">
+              Aliases
+            </label>
+            <input
+              type="text"
+              id="aliases"
+              name="aliases"
+              value={form.aliases}
+              onChange={handleChange}
+              placeholder="e.g. First Team, A-Squad, Starters"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500 mt-1">Comma-separated list of alternative names</p>
+          </div>
+
           <div className="flex gap-3">
             <button
               type="submit"
               disabled={isSubmitting}
               className="rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              {isSubmitting ? 'Creating...' : 'Create Group'}
+              {isSubmitting ? 'Creating...' : 'Create Squad'}
             </button>
             <Link
               href={`/teams/${teamId}/groups`}

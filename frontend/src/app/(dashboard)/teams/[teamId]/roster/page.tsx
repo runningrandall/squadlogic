@@ -1,6 +1,5 @@
 'use client';
-
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -8,40 +7,95 @@ import { useAuth } from '@/lib/auth-context';
 import { RoleGuard } from '@/components/role-guard';
 
 interface TeamMember {
+  teamMemberId: string;
   memberId: string;
-  name: string;
-  type: 'athlete' | 'coach';
+  memberType: 'athlete' | 'coach';
   role: string;
   jerseyNumber?: string;
   status: string;
+}
+
+interface MemberDetails {
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+interface Athlete {
+  athleteId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+interface Coach {
+  coachId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
 }
 
 interface AddMemberForm {
   memberType: 'athlete' | 'coach';
   memberId: string;
   role: string;
+  jerseyNumber: string;
 }
 
 export default function RosterPage() {
-  const { teamId } = useParams<{ teamId: string }>();
+  const { teamId } = useParams() as { teamId: string };
   const { user } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [memberDetailsMap, setMemberDetailsMap] = useState<Record<string, MemberDetails>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableMembers, setAvailableMembers] = useState<Array<{ id: string; label: string }>>([]);
+  const [isFetchingMembers, setIsFetchingMembers] = useState(false);
   const [addForm, setAddForm] = useState<AddMemberForm>({
     memberType: 'athlete',
     memberId: '',
     role: '',
+    jerseyNumber: '',
   });
 
   useEffect(() => {
     async function fetchMembers() {
       try {
         setIsLoading(true);
-        const data = await api.get<TeamMember[]>(`/teams/${teamId}/members`);
+        const { items: data } = await api.get<{ items: TeamMember[] }>(`/teams/${teamId}/members`);
         setMembers(data);
+
+        // Batch-fetch athlete and coach details for display names
+        const detailsMap: Record<string, MemberDetails> = {};
+        const fetchPromises = data.map(async (member) => {
+          try {
+            if (member.memberType === 'athlete') {
+              const athlete = await api.get<Athlete>(`/athletes/${member.memberId}`);
+              detailsMap[member.memberId] = {
+                firstName: athlete.firstName,
+                lastName: athlete.lastName,
+                email: athlete.email,
+              };
+            } else {
+              const coach = await api.get<Coach>(`/coaches/${member.memberId}`);
+              detailsMap[member.memberId] = {
+                firstName: coach.firstName,
+                lastName: coach.lastName,
+                email: coach.email,
+              };
+            }
+          } catch {
+            detailsMap[member.memberId] = {
+              firstName: 'Unknown',
+              lastName: '',
+              email: '',
+            };
+          }
+        });
+        await Promise.all(fetchPromises);
+        setMemberDetailsMap(detailsMap);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load roster');
       } finally {
@@ -54,6 +108,54 @@ export default function RosterPage() {
     }
   }, [user, teamId]);
 
+  const fetchAvailableMembers = useCallback(async (memberType: 'athlete' | 'coach') => {
+    setIsFetchingMembers(true);
+    setAvailableMembers([]);
+    // Get IDs of members already on the roster for this type
+    const existingIds = new Set(
+      members
+        .filter((m) => m.memberType === memberType)
+        .map((m) => m.memberId),
+    );
+    try {
+      if (memberType === 'athlete') {
+        const data = await api.get<{ items: Athlete[] }>('/athletes');
+        setAvailableMembers(
+          data.items
+            .filter((a) => !existingIds.has(a.athleteId))
+            .map((a) => ({
+              id: a.athleteId,
+              label: `${a.firstName} ${a.lastName}${a.email ? ` (${a.email})` : ''}`,
+            })),
+        );
+      } else {
+        const data = await api.get<{ items: Coach[] }>('/coaches');
+        setAvailableMembers(
+          data.items
+            .filter((c) => !existingIds.has(c.coachId))
+            .map((c) => ({
+              id: c.coachId,
+              label: `${c.firstName} ${c.lastName}${c.email ? ` (${c.email})` : ''}`,
+            })),
+        );
+      }
+    } catch {
+      setAvailableMembers([]);
+    } finally {
+      setIsFetchingMembers(false);
+    }
+  }, [members]);
+
+  useEffect(() => {
+    if (showAddForm) {
+      fetchAvailableMembers(addForm.memberType);
+    }
+  }, [showAddForm, addForm.memberType, fetchAvailableMembers]);
+
+  const handleMemberTypeChange = (memberType: 'athlete' | 'coach') => {
+    setAddForm((prev) => ({ ...prev, memberType, memberId: '' }));
+  };
+
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -63,10 +165,11 @@ export default function RosterPage() {
         memberType: addForm.memberType,
         memberId: addForm.memberId,
         role: addForm.role,
+        ...(addForm.jerseyNumber ? { jerseyNumber: addForm.jerseyNumber } : {}),
       });
       setMembers((prev) => [...prev, newMember]);
       setShowAddForm(false);
-      setAddForm({ memberType: 'athlete', memberId: '', role: '' });
+      setAddForm({ memberType: 'athlete', memberId: '', role: '', jerseyNumber: '' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add member');
     } finally {
@@ -121,7 +224,7 @@ export default function RosterPage() {
             <select
               id="memberType"
               value={addForm.memberType}
-              onChange={(e) => setAddForm((prev) => ({ ...prev, memberType: e.target.value as 'athlete' | 'coach' }))}
+              onChange={(e) => handleMemberTypeChange(e.target.value as 'athlete' | 'coach')}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="athlete">Athlete</option>
@@ -131,36 +234,77 @@ export default function RosterPage() {
 
           <div>
             <label htmlFor="memberId" className="block text-sm font-medium text-gray-700 mb-1">
-              Member ID *
+              {addForm.memberType === 'athlete' ? 'Athlete' : 'Coach'} *
             </label>
-            <input
-              type="text"
-              id="memberId"
-              required
-              value={addForm.memberId}
-              onChange={(e) => setAddForm((prev) => ({ ...prev, memberId: e.target.value }))}
-              placeholder={`Search or enter ${addForm.memberType} ID`}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+            {isFetchingMembers ? (
+              <div className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-400">
+                Loading {addForm.memberType === 'athlete' ? 'athletes' : 'coaches'}...
+              </div>
+            ) : availableMembers.length === 0 ? (
+              <div className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-500">
+                No {addForm.memberType === 'athlete' ? 'athletes' : 'coaches'} found.{' '}
+                <Link
+                  href={addForm.memberType === 'athlete' ? '/athletes/new' : '/coaches/new'}
+                  className="text-blue-600 hover:underline"
+                >
+                  Create one first
+                </Link>.
+              </div>
+            ) : (
+              <select
+                id="memberId"
+                required
+                value={addForm.memberId}
+                onChange={(e) => setAddForm((prev) => ({ ...prev, memberId: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select {addForm.memberType === 'athlete' ? 'an athlete' : 'a coach'}</option>
+                {availableMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.label}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div>
             <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
-              Role
+              Role *
+            </label>
+            <select
+              id="role"
+              required
+              value={addForm.role}
+              onChange={(e) => setAddForm((prev) => ({ ...prev, role: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Select a role</option>
+              <option value="player">Player</option>
+              <option value="captain">Captain</option>
+              <option value="head_coach">Head Coach</option>
+              <option value="assistant_coach">Assistant Coach</option>
+              <option value="manager">Manager</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="jerseyNumber" className="block text-sm font-medium text-gray-700 mb-1">
+              Jersey Number
             </label>
             <input
               type="text"
-              id="role"
-              value={addForm.role}
-              onChange={(e) => setAddForm((prev) => ({ ...prev, role: e.target.value }))}
-              placeholder="e.g. Captain, Assistant Coach"
+              id="jerseyNumber"
+              value={addForm.jerseyNumber}
+              onChange={(e) => setAddForm((prev) => ({ ...prev, jerseyNumber: e.target.value }))}
+              placeholder="e.g. 10"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || availableMembers.length === 0}
             className="rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             {isSubmitting ? 'Adding...' : 'Add to Roster'}
@@ -189,14 +333,18 @@ export default function RosterPage() {
             ) : (
               members.map((member) => (
                 <tr key={member.memberId} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{member.name}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    {memberDetailsMap[member.memberId]
+                      ? `${memberDetailsMap[member.memberId].firstName} ${memberDetailsMap[member.memberId].lastName}`.trim()
+                      : 'Unknown'}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      member.type === 'athlete'
+                      member.memberType === 'athlete'
                         ? 'bg-blue-100 text-blue-800'
                         : 'bg-purple-100 text-purple-800'
                     }`}>
-                      {member.type}
+                      {member.memberType}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">{member.role || '-'}</td>

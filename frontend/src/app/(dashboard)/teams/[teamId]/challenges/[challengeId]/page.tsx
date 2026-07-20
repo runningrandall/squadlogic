@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -14,6 +13,7 @@ interface Challenge {
   dueDate: string;
   points: number;
   status: string;
+  routeUrl?: string | null;
 }
 
 interface ChallengeCompletion {
@@ -47,7 +47,7 @@ function statusBadgeClasses(status: string): string {
 }
 
 export default function ChallengeDetailPage() {
-  const { teamId, challengeId } = useParams<{ teamId: string; challengeId: string }>();
+  const { teamId, challengeId } = useParams() as { teamId: string; challengeId: string };
   const { user } = useAuth();
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [completions, setCompletions] = useState<ChallengeCompletion[]>([]);
@@ -137,6 +137,23 @@ export default function ChallengeDetailPage() {
           {challenge.description && (
             <p className="text-gray-500 mt-1">{challenge.description}</p>
           )}
+          {challenge.routeUrl && (
+            <a
+              href={challenge.routeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mt-2"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              View Route
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          )}
         </div>
         <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${statusBadgeClasses(challenge.status)}`}>
           {challenge.status}
@@ -164,12 +181,12 @@ export default function ChallengeDetailPage() {
 
       <div className="rounded-xl bg-white shadow-sm border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Group Completion Status</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Squad Completion Status</h2>
         </div>
 
         {groups.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-gray-500">
-            No groups in this team yet.
+            No squads in this team yet.
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">

@@ -8,6 +8,7 @@ const mockChallengeService = {
   listChallengesByTeam: vi.fn(),
   updateChallenge: vi.fn(),
   deleteChallenge: vi.fn(),
+  getChallengeStats: vi.fn(),
 };
 
 const mockCompletionService = {
@@ -55,6 +56,7 @@ const mockChallenge = {
   title: 'Sprint Challenge',
   description: 'Run fast',
   dueDate: '2026-04-01',
+  routeUrl: null,
   status: 'active',
   points: 10,
   createdBy: 'user-001',
@@ -148,14 +150,15 @@ describe('Challenge routes', () => {
       expect(res.statusCode).toBe(201);
     });
 
-    it('rejects TeamManager with 403', async () => {
+    it('allows TeamManager to create challenges', async () => {
+      mockChallengeService.createChallenge.mockResolvedValue(mockChallenge);
       const res = await app.inject({
         method: 'POST',
         url: '/teams/team-456/challenges',
         headers: { 'x-user-role': 'TeamManager', 'x-organization-id': 'org-789' },
         payload: { title: 'Test' },
       });
-      expect(res.statusCode).toBe(403);
+      expect(res.statusCode).toBe(201);
     });
   });
 
@@ -461,6 +464,62 @@ describe('Challenge routes', () => {
         headers: { 'x-user-role': 'TeamAdmin', 'x-organization-id': 'org-789' },
       });
       expect(res.statusCode).toBe(204);
+    });
+  });
+
+  describe('GET /teams/:teamId/challenge-stats', () => {
+    it('returns aggregated stats', async () => {
+      const mockStats = {
+        totalChallenges: 3,
+        totalCompletions: 5,
+        totalPointsAvailable: 100,
+        totalPointsEarned: 60,
+        squadStats: [
+          { groupId: 'squad-a', completionCount: 3, pointsEarned: 40 },
+          { groupId: 'squad-b', completionCount: 2, pointsEarned: 20 },
+        ],
+      };
+      mockChallengeService.getChallengeStats.mockResolvedValue(mockStats);
+      const res = await app.inject({
+        method: 'GET',
+        url: '/teams/team-456/challenge-stats',
+        headers: orgAdminHeaders,
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.totalChallenges).toBe(3);
+      expect(body.totalCompletions).toBe(5);
+      expect(body.totalPointsAvailable).toBe(100);
+      expect(body.totalPointsEarned).toBe(60);
+      expect(body.squadStats).toHaveLength(2);
+    });
+
+    it('rejects missing org context with 403', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/teams/team-456/challenge-stats',
+        headers: { 'x-user-role': 'OrgAdmin' },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('calls getChallengeStats with correct params', async () => {
+      mockChallengeService.getChallengeStats.mockResolvedValue({
+        totalChallenges: 0,
+        totalCompletions: 0,
+        totalPointsAvailable: 0,
+        totalPointsEarned: 0,
+        squadStats: [],
+      });
+      await app.inject({
+        method: 'GET',
+        url: '/teams/team-456/challenge-stats',
+        headers: orgAdminHeaders,
+      });
+      expect(mockChallengeService.getChallengeStats).toHaveBeenCalledWith(
+        'org-789',
+        'team-456',
+      );
     });
   });
 });

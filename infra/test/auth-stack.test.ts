@@ -15,7 +15,7 @@ describe('AuthStack', () => {
 
   test('creates Cognito User Pool with custom attributes', () => {
     template.hasResourceProperties('AWS::Cognito::UserPool', {
-      UserPoolName: 'squadlogic-users-test',
+      UserPoolName: 'TeamManager-Users-test',
       Schema: Match.arrayWith([
         Match.objectLike({
           Name: 'organizationId',
@@ -33,7 +33,7 @@ describe('AuthStack', () => {
 
   test('creates User Pool Client', () => {
     template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-      ClientName: 'squadlogic-client-test',
+      ClientName: 'TeamManager-Client-test',
     });
   });
 
@@ -84,7 +84,7 @@ describe('AuthStack', () => {
 
   test('creates Pre Token Generation Lambda function', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
-      FunctionName: 'squadlogic-pre-token-generation-test',
+      FunctionName: 'TeamManager-PreTokenGen-test',
       Runtime: 'nodejs22.x',
       Handler: 'index.handler',
     });

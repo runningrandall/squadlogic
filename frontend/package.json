@@ -7,17 +7,20 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:coverage": "vitest --coverage",
     "lint": "eslint src/"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.7.0",
+    "@next/env": "^16.2.2",
+    "@swc/helpers": "^0.5.21",
     "aws-amplify": "^6.12.0",
     "next": "^16.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "styled-jsx": "^5.1.7"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.1.6",

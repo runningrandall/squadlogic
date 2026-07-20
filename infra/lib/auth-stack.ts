@@ -163,7 +163,7 @@ export class AuthStack extends cdk.Stack {
       {
         functionName: `TeamManager-PreTokenGen-${stageName}`,
         runtime: lambda.Runtime.NODEJS_22_X,
-        entry: path.join(__dirname, 'lambdas', 'pre-token-generation.ts'),
+        entry: path.resolve('lib', 'lambdas', 'pre-token-generation.ts'),
         handler: 'handler',
         timeout: cdk.Duration.seconds(5),
         memorySize: 128,
@@ -178,10 +178,18 @@ export class AuthStack extends cdk.Stack {
       },
     );
 
-    userPool.addTrigger(
-      cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
-      preTokenGenerationFn,
-    );
+    // Use property override to set V2_0 trigger (addTrigger doesn't support V2 lambda version)
+    const cfnUserPool = userPool.node.defaultChild as cognito.CfnUserPool;
+    cfnUserPool.addPropertyOverride('LambdaConfig.PreTokenGenerationConfig', {
+      LambdaArn: preTokenGenerationFn.functionArn,
+      LambdaVersion: 'V2_0',
+    });
+
+    // Grant Cognito permission to invoke the Lambda
+    preTokenGenerationFn.addPermission('CognitoInvoke', {
+      principal: new cdk.aws_iam.ServicePrincipal('cognito-idp.amazonaws.com'),
+      sourceArn: userPool.userPoolArn,
+    });
 
     // Verified Permissions Policy Store with Cedar Schema
     const cedarSchema: Record<string, unknown> = {
@@ -192,19 +200,28 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
-                teamId: { type: 'String', required: false },
+                teamId: { type: 'String', required: true },
                 email: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Role'],
           },
           Role: {
+            shape: {
+              type: 'Record',
+              attributes: {
+                organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
+              },
+            },
             memberOfTypes: ['Role'],
           },
           Organization: {
             shape: {
               type: 'Record',
               attributes: {
+                organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
                 status: { type: 'String', required: true },
               },
             },
@@ -214,6 +231,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Organization'],
@@ -223,7 +241,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
-                teamId: { type: 'String', required: false },
+                teamId: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Team', 'Organization'],
@@ -243,6 +261,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Organization'],
@@ -252,6 +271,7 @@ export class AuthStack extends cdk.Stack {
               type: 'Record',
               attributes: {
                 organizationId: { type: 'String', required: true },
+                teamId: { type: 'String', required: true },
               },
             },
             memberOfTypes: ['Organization'],
@@ -368,7 +388,7 @@ export class AuthStack extends cdk.Stack {
           description: 'TeamAdmin: all actions within own team',
           statement: [
             'permit (principal in SquadLogic::Role::"TeamAdmin", action, resource)',
-            'when { principal.organizationId == resource.organizationId && principal has teamId && resource has teamId && principal.teamId == resource.teamId };',
+            'when { principal.organizationId == resource.organizationId && principal.teamId == resource.teamId };',
           ].join('\n'),
         },
       },
@@ -382,7 +402,7 @@ export class AuthStack extends cdk.Stack {
           description: 'TeamManager: View, Create, Update within own team',
           statement: [
             'permit (principal in SquadLogic::Role::"TeamManager", action in [SquadLogic::Action::"View", SquadLogic::Action::"Create", SquadLogic::Action::"Update"], resource)',
-            'when { principal.organizationId == resource.organizationId && principal has teamId && resource has teamId && principal.teamId == resource.teamId };',
+            'when { principal.organizationId == resource.organizationId && principal.teamId == resource.teamId };',
           ].join('\n'),
         },
       },
@@ -396,7 +416,7 @@ export class AuthStack extends cdk.Stack {
           description: 'TeamUser: View within own team',
           statement: [
             'permit (principal in SquadLogic::Role::"TeamUser", action in [SquadLogic::Action::"View"], resource)',
-            'when { principal.organizationId == resource.organizationId && principal has teamId && resource has teamId && principal.teamId == resource.teamId };',
+            'when { principal.organizationId == resource.organizationId && principal.teamId == resource.teamId };',
           ].join('\n'),
         },
       },
@@ -410,7 +430,7 @@ export class AuthStack extends cdk.Stack {
           description: 'Athlete: View within own team',
           statement: [
             'permit (principal in SquadLogic::Role::"Athlete", action in [SquadLogic::Action::"View"], resource)',
-            'when { principal.organizationId == resource.organizationId && principal has teamId && resource has teamId && principal.teamId == resource.teamId };',
+            'when { principal.organizationId == resource.organizationId && principal.teamId == resource.teamId };',
           ].join('\n'),
         },
       },

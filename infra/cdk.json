@@ -17,6 +17,9 @@
     ]
   },
   "context": {
-    "stageName": "dev"
+    "stageName": "dev",
+    "domainName": "squadlogic.io",
+    "certificateArn": "arn:aws:acm:us-east-1:817623666794:certificate/9721fd72-c455-4193-9b61-85e5e75b487b",
+    "hostedZoneId": "Z02289832L2TIGCY3GAC6"
   }
 }

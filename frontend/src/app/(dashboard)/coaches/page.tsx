@@ -27,7 +27,7 @@ export default function CoachesPage() {
     async function fetchCoaches() {
       try {
         setIsLoading(true);
-        const data = await api.get<Coach[]>('/coaches');
+        const { items: data } = await api.get<{ items: Coach[] }>('/coaches');
         setCoaches(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load coaches');
