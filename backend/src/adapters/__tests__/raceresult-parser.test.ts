@@ -232,4 +232,107 @@ describe('RaceResultHtmlParser', () => {
       expect(result).toHaveLength(1);
     });
   });
+
+  describe('parseParticipants — RaceResult nested API format', () => {
+    const buildNestedResponse = (
+      dataFields: string[],
+      groupedData: Record<string, Record<string, unknown[][]>>,
+    ) => JSON.stringify({ data: groupedData, DataFields: dataFields });
+
+    it('parses CPT-style response with DisplayName and no separate first/last fields', () => {
+      const body = buildNestedResponse(
+        ['BIB', 'ID', 'iif([Upgrade]=1;"*" & ucase([DisplayName]);ucase([DisplayName]))', 'Grade', 'CONTEST.NAME'],
+        {
+          '#1_Lehi HS': {
+            '#1_Varsity Girls': [['182', '39', 'ASHLYN ADAMS', '12', 'Varsity Girls']],
+            '#2_JV A Girls': [['453', '11', 'LARISSA BORBA', '10', 'JV A Girls']],
+          },
+        },
+      );
+
+      const result = parser.parseParticipants(body);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        bibNumber: '182',
+        firstName: 'ASHLYN',
+        lastName: 'ADAMS',
+        team: 'Lehi HS',
+        category: 'Varsity Girls',
+      });
+      expect(result[1]).toEqual({
+        bibNumber: '453',
+        firstName: 'LARISSA',
+        lastName: 'BORBA',
+        team: 'Lehi HS',
+        category: 'JV A Girls',
+      });
+    });
+
+    it('parses standard response with separate Firstname/Lastname fields', () => {
+      const body = buildNestedResponse(
+        ['BIB', 'Firstname', 'Lastname', 'Club', 'Contest'],
+        {
+          '#1_Brighton': {
+            '#1_Varsity Boys': [['101', 'John', 'Adams', 'Brighton', 'Varsity Boys']],
+          },
+        },
+      );
+
+      const result = parser.parseParticipants(body);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        bibNumber: '101',
+        firstName: 'John',
+        lastName: 'Adams',
+        team: 'Brighton',
+        category: 'Varsity Boys',
+      });
+    });
+
+    it('uses outer group key as team when no Club field is present', () => {
+      const body = buildNestedResponse(
+        ['BIB', 'iif(1;ucase([DisplayName]);"")', 'CONTEST.NAME'],
+        { '#1_Alpine Riders': { '#1_JV B Boys': [['55', 'JAKE SMITH', 'JV B Boys']] } },
+      );
+
+      const result = parser.parseParticipants(body);
+
+      expect(result[0].team).toBe('Alpine Riders');
+    });
+
+    it('uses inner group key as category when no CONTEST.NAME field', () => {
+      const body = buildNestedResponse(
+        ['BIB', 'Firstname', 'Lastname'],
+        { '#1_Team A': { '#1_Varsity Girls': [['10', 'Jane', 'Doe']] } },
+      );
+
+      const result = parser.parseParticipants(body);
+
+      expect(result[0].category).toBe('Varsity Girls');
+    });
+
+    it('extracts participants across multiple teams and categories', () => {
+      const body = buildNestedResponse(
+        ['BIB', 'iif(1;ucase([DisplayName]);"")', 'CONTEST.NAME'],
+        {
+          '#1_Team A': {
+            '#1_Cat 1': [
+              ['1', 'ALICE ONE', 'Cat 1'],
+              ['2', 'BOB TWO', 'Cat 1'],
+            ],
+          },
+          '#2_Team B': {
+            '#1_Cat 2': [['3', 'CAROL THREE', 'Cat 2']],
+          },
+        },
+      );
+
+      const result = parser.parseParticipants(body);
+
+      expect(result).toHaveLength(3);
+      expect(result.map((p) => p.team)).toEqual(['Team A', 'Team A', 'Team B']);
+    });
+  });
 });

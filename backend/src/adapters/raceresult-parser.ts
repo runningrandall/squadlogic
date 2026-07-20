@@ -172,6 +172,15 @@ export class RaceResultHtmlParser implements RaceResultParser {
     // Try JSON format first
     try {
       const data = JSON.parse(body);
+
+      // Handle RaceResult API nested format:
+      // { data: { "#N_Team": { "#N_Category": [[row_values], ...] } }, DataFields: [...], ... }
+      if (data && typeof data === 'object' && !Array.isArray(data) && 'data' in data && 'DataFields' in data) {
+        return this.parseRaceResultNestedFormat(
+          data as { data: unknown; DataFields: string[] },
+        );
+      }
+
       if (Array.isArray(data)) {
         for (const row of data) {
           participants.push({
@@ -208,6 +217,73 @@ export class RaceResultHtmlParser implements RaceResultParser {
           team: cells[3] ?? '',
           category: cells[4] ?? '',
         });
+      }
+    }
+
+    return participants;
+  }
+
+  private parseRaceResultNestedFormat(apiResponse: {
+    data: unknown;
+    DataFields: string[];
+  }): RaceParticipant[] {
+    const participants: RaceParticipant[] = [];
+    const fields = apiResponse.DataFields;
+    const data = apiResponse.data as Record<string, unknown>;
+
+    // Locate standard field indices by name
+    const bibIdx = fields.findIndex((f) => /^BIB$/i.test(f));
+    const firstIdx = fields.findIndex((f) => /^Firstname$/i.test(f));
+    const lastIdx = fields.findIndex((f) => /^Lastname$/i.test(f));
+    const clubIdx = fields.findIndex((f) => /^Club$/i.test(f));
+    const contestNameIdx = fields.findIndex((f) =>
+      /^CONTEST\.NAME$/i.test(f) || /^Contest$/i.test(f),
+    );
+    // Fallback: a combined name field (e.g. DisplayName formula in CPT reports)
+    const nameIdx =
+      firstIdx === -1 || lastIdx === -1
+        ? fields.findIndex((f) => /DisplayName/i.test(f))
+        : -1;
+
+    for (const [teamKey, teamData] of Object.entries(data)) {
+      // Strip "#N_" prefix: "#1_Lehi HS" → "Lehi HS"
+      const teamName = teamKey.replace(/^#\d+_/, '');
+
+      if (typeof teamData !== 'object' || teamData === null) continue;
+
+      for (const [catKey, catRows] of Object.entries(
+        teamData as Record<string, unknown>,
+      )) {
+        const categoryName = catKey.replace(/^#\d+_/, '');
+
+        if (!Array.isArray(catRows)) continue;
+
+        for (const row of catRows) {
+          if (!Array.isArray(row)) continue;
+
+          let firstName = '';
+          let lastName = '';
+
+          if (firstIdx !== -1 && lastIdx !== -1) {
+            firstName = String(row[firstIdx] ?? '');
+            lastName = String(row[lastIdx] ?? '');
+          } else if (nameIdx !== -1) {
+            // Split combined "FIRST LAST" display name on first space
+            const fullName = String(row[nameIdx] ?? '').trim();
+            const spaceAt = fullName.indexOf(' ');
+            firstName = spaceAt !== -1 ? fullName.slice(0, spaceAt) : fullName;
+            lastName = spaceAt !== -1 ? fullName.slice(spaceAt + 1) : '';
+          }
+
+          const team = clubIdx !== -1 ? String(row[clubIdx] ?? '') : teamName;
+          const category =
+            contestNameIdx !== -1
+              ? String(row[contestNameIdx] ?? '')
+              : categoryName;
+          const bibNumber = bibIdx !== -1 ? String(row[bibIdx] ?? '') : '';
+
+          participants.push({ firstName, lastName, team, category, bibNumber });
+        }
       }
     }
 
