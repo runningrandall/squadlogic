@@ -1,0 +1,73 @@
+import type { RaceEventMetadata, RaceParticipant } from '../domain/race-event.js';
+import type { RaceResultPort, RaceResultParser } from '../ports/raceresult-port.js';
+import type { EventPublisher } from '../ports/event-publisher.js';
+
+export interface RaceEventImportResult {
+  metadata: RaceEventMetadata;
+  participants: RaceParticipant[];
+}
+
+export class RaceEventService {
+  constructor(
+    private readonly client: RaceResultPort,
+    private readonly parser: RaceResultParser,
+    private readonly eventPublisher: EventPublisher,
+  ) {}
+
+  async importEvent(
+    url: string,
+    eventId: string,
+  ): Promise<RaceEventImportResult> {
+    // Phase 1: Fetch page and parse metadata
+    const html = await this.client.fetchEventPage(url);
+    const metadata = this.parser.parseEventMetadata(html, eventId, url);
+
+    // Phase 2: Discover API params and fetch participants
+    const apiParams = this.parser.discoverApiParams(html);
+    let participants: RaceParticipant[] = [];
+
+    if (apiParams) {
+      const responseBody = await this.client.fetchParticipants(
+        eventId,
+        apiParams.apiKey,
+        apiParams.listName,
+      );
+      participants = this.parser.parseParticipants(responseBody);
+    }
+
+    if (participants.length === 0) {
+      throw new Error('No participants found for this event.');
+    }
+
+    // Publish domain event (fire-and-forget)
+    this.eventPublisher
+      .publish('RaceEventImported', {
+        eventId,
+        eventName: metadata.eventName,
+        participantCount: participants.length,
+        teamCount: metadata.teams.length,
+      })
+      .catch(() => {
+        // Failed event publication does not block the response
+      });
+
+    return { metadata, participants };
+  }
+
+  getTeamList(
+    teams: string[],
+    participants: RaceParticipant[],
+  ): { name: string; count: number }[] {
+    const countMap = new Map<string, number>();
+
+    for (const p of participants) {
+      if (!p.team) continue;
+      countMap.set(p.team, (countMap.get(p.team) ?? 0) + 1);
+    }
+
+    return teams
+      .filter((t) => (countMap.get(t) ?? 0) > 0)
+      .map((name) => ({ name, count: countMap.get(name) ?? 0 }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }
+}

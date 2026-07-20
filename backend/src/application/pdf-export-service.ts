@@ -1,0 +1,171 @@
+import PDFDocument from 'pdfkit';
+import type { TeamWaveSchedule } from '../domain/race-event.js';
+import type { TeamBranding } from '../domain/team-branding.js';
+
+export interface PdfBranding {
+  teamDisplayName: string;
+  primaryColor: string;
+  tertiaryColor: string;
+  logoUrl: string | null;
+}
+
+const DEFAULT_BRANDING: PdfBranding = {
+  teamDisplayName: '',
+  primaryColor: '#333333',
+  tertiaryColor: '#F5F5F5',
+  logoUrl: null,
+};
+
+export class PdfExportService {
+  generatePdf(
+    schedule: TeamWaveSchedule,
+    branding?: Partial<PdfBranding>,
+    eventLocation?: string,
+  ): Promise<Buffer> {
+    const brand = { ...DEFAULT_BRANDING, ...branding };
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({
+        size: 'LETTER',
+        margins: { top: 40, bottom: 40, left: 40, right: 40 },
+      });
+
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      this.renderHeader(doc, schedule, brand, eventLocation);
+      this.renderSchedule(doc, schedule, brand);
+
+      doc.end();
+    });
+  }
+
+  generateFilename(teamName: string, eventDate: string): string {
+    const sanitized = teamName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
+    return `${sanitized}_${eventDate}_schedule.pdf`;
+  }
+
+  private renderHeader(
+    doc: PDFKit.PDFDocument,
+    schedule: TeamWaveSchedule,
+    brand: PdfBranding,
+    eventLocation?: string,
+  ): void {
+    // Header background
+    doc.rect(0, 0, doc.page.width, 80).fill(brand.primaryColor);
+
+    // Team name
+    const displayName = brand.teamDisplayName || schedule.teamName;
+    doc.fillColor('#FFFFFF').fontSize(20).font('Helvetica-Bold');
+    doc.text(displayName, 50, 15, { width: doc.page.width - 100 });
+
+    // Event info
+    doc.fontSize(10).font('Helvetica');
+    doc.text(
+      `${schedule.eventName}  •  ${schedule.eventDate}${eventLocation ? `  •  ${eventLocation}` : ''}`,
+      50,
+      45,
+      { width: doc.page.width - 100 },
+    );
+
+    doc.moveDown(2);
+    doc.y = 100;
+  }
+
+  private renderSchedule(
+    doc: PDFKit.PDFDocument,
+    schedule: TeamWaveSchedule,
+    brand: PdfBranding,
+  ): void {
+    const leftMargin = 40;
+    const colWidths = [120, 40, 50, 50, 50, 50, 50];
+    const headers = ['Athlete', 'Bib', 'Arrive', 'WU Start', 'WU End', 'Stage', 'Race'];
+    const tableWidth = colWidths.reduce((s, w) => s + w, 0);
+
+    for (const wave of schedule.waves) {
+      // Check if we need a new page
+      if (doc.y > doc.page.height - 120) {
+        doc.addPage();
+        doc.y = 40;
+      }
+
+      // Wave header
+      doc.rect(leftMargin, doc.y, tableWidth, 22).fill(brand.primaryColor);
+      doc.fillColor('#FFFFFF').fontSize(11).font('Helvetica-Bold');
+      doc.text(wave.waveName, leftMargin + 6, doc.y + 5, { width: tableWidth - 12 });
+      doc.y += 26;
+
+      for (const cat of wave.categories) {
+        if (doc.y > doc.page.height - 80) {
+          doc.addPage();
+          doc.y = 40;
+        }
+
+        // Category sub-header
+        doc.rect(leftMargin, doc.y, tableWidth, 18).fill(brand.tertiaryColor);
+        doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
+        const catLabel = `${cat.categoryName}  (Start: ${cat.startTime}, Stage: ${cat.stageTime}, ${cat.laps ?? '—'} laps)`;
+        doc.text(catLabel, leftMargin + 6, doc.y + 4, { width: tableWidth - 12 });
+        doc.y += 20;
+
+        // Column headers
+        doc.fillColor('#666666').fontSize(7).font('Helvetica-Bold');
+        let x = leftMargin;
+        for (let i = 0; i < headers.length; i++) {
+          doc.text(headers[i], x + 3, doc.y + 2, { width: colWidths[i] - 6 });
+          x += colWidths[i];
+        }
+        doc.y += 14;
+
+        // Athlete rows
+        doc.font('Helvetica').fontSize(8).fillColor('#000000');
+        let rowIndex = 0;
+        for (const athlete of cat.athletes) {
+          if (doc.y > doc.page.height - 50) {
+            doc.addPage();
+            doc.y = 40;
+          }
+
+          // Alternating row background
+          if (rowIndex % 2 === 1) {
+            doc.rect(leftMargin, doc.y, tableWidth, 14).fill('#F9F9F9');
+            doc.fillColor('#000000');
+          }
+
+          x = leftMargin;
+          const values = [
+            `${athlete.lastName}, ${athlete.firstName}`,
+            athlete.bibNumber,
+            athlete.logistics?.arrivalTime ?? '',
+            athlete.logistics?.warmupStart ?? '',
+            athlete.logistics?.warmupEnd ?? '',
+            athlete.logistics?.stagingTime ?? '',
+            athlete.logistics?.raceStart ?? '',
+          ];
+
+          for (let i = 0; i < values.length; i++) {
+            doc.text(values[i], x + 3, doc.y + 3, { width: colWidths[i] - 6 });
+            x += colWidths[i];
+          }
+
+          doc.y += 14;
+          rowIndex++;
+        }
+
+        doc.y += 4;
+      }
+
+      doc.y += 8;
+    }
+
+    // Footer
+    doc.fontSize(7).fillColor('#999999').font('Helvetica');
+    doc.text(
+      `Generated by Switchback  •  ${schedule.totalAthletes} athletes  •  ${schedule.waves.length} waves`,
+      leftMargin,
+      doc.y + 10,
+    );
+  }
+}
