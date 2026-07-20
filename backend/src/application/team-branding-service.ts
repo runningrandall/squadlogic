@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CreateBrandingDto, TeamBranding, UpdateBrandingDto } from '../domain/team-branding.js';
+import type { CreateBrandingDto, TeamBranding } from '../domain/team-branding.js';
 import { ALLOWED_LOGO_TYPES, MAX_LOGO_SIZE_BYTES } from '../domain/team-branding.js';
 import { ValidationError } from '../lib/errors.js';
 import type { TeamBrandingRepository } from '../ports/team-branding-repository.js';

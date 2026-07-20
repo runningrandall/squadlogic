@@ -5,7 +5,7 @@ import { S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
 import { TeamBrandingDynamoRepository } from '../../adapters/team-branding-dynamo-repository.js';
 import { TeamBrandingService } from '../../application/team-branding-service.js';
-import { CreateBrandingSchema, ALLOWED_LOGO_TYPES, MAX_LOGO_SIZE_BYTES } from '../../domain/team-branding.js';
+import { CreateBrandingSchema } from '../../domain/team-branding.js';
 import { validate } from '../../lib/validation.js';
 import { success } from '../../lib/response.js';
 import { ValidationError } from '../../lib/errors.js';

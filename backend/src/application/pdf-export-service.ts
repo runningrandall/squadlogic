@@ -1,6 +1,5 @@
 import PDFDocument from 'pdfkit';
 import type { TeamWaveSchedule } from '../domain/race-event.js';
-import type { TeamBranding } from '../domain/team-branding.js';
 
 export interface PdfBranding {
   teamDisplayName: string;
