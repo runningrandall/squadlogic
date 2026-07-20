@@ -10,8 +10,8 @@ export class RaceResultHtmlParser implements RaceResultParser {
     const jsonLd = this.extractJsonLd(html);
     const teams = this.extractTeams(html);
 
-    const eventName = jsonLd?.name ?? '';
-    const eventDate = this.normalizeDate(jsonLd?.startDate ?? '');
+    const eventName = String(jsonLd?.name ?? '');
+    const eventDate = this.normalizeDate(String(jsonLd?.startDate ?? ''));
     const eventLocation = this.extractLocation(jsonLd);
 
     const missingFields: string[] = [];

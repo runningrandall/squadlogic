@@ -12,7 +12,12 @@ export class WaveConfigDynamoRepository implements WaveConfigRepository {
       configId: config.configId,
       organizationId: config.organizationId,
       waveName: config.waveName,
-      entries: config.entries,
+      entries: config.entries.map((e) => ({
+        categoryName: e.categoryName,
+        stageTime: e.stageTime,
+        startTime: e.startTime,
+        laps: e.laps ?? undefined,
+      })),
     }).go();
 
     return result.data as unknown as WaveConfig;
