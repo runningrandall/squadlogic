@@ -90,22 +90,11 @@ export default function RaceDayPage() {
     setError(null);
     setIsLoading(true);
     try {
-      // For now, we pass the wave config and let the backend generate the schedule
-      // In a full implementation this would call the schedule generation endpoint
-      const scheduleData = await api.post<Schedule>(
-        `/race-events/${importResult.eventId}/export/pdf`,
-        { teamName: selectedTeam, waveConfig: [] },
-      ).catch(() => null);
-
-      // Fallback: construct schedule display from the data we have
-      // This would be replaced by a proper schedule generation endpoint
-      setSchedule({
-        teamName: selectedTeam,
-        eventName: importResult.eventName,
-        eventDate: importResult.eventDate,
-        totalAthletes: teams.find((t) => t.name === selectedTeam)?.count ?? 0,
-        waves: [],
-      });
+      const enriched = await api.post<Schedule>(
+        `/race-events/${importResult.eventId}/schedule`,
+        { teamName: selectedTeam },
+      );
+      setSchedule(enriched);
       setStep('schedule');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate schedule');

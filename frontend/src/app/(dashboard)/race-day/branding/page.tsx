@@ -177,7 +177,40 @@ export default function BrandingPage() {
                 type="file"
                 accept=".png,.jpg,.jpeg,.svg"
                 className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                onChange={() => setMessage({ type: 'error', text: 'Logo upload requires S3 configuration. Coming soon.' })}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setMessage(null);
+                  try {
+                    // Get presigned upload URL
+                    const { uploadUrl, logoUrl } = await api.post<{
+                      uploadUrl: string;
+                      logoUrl: string;
+                    }>('/branding/logo/upload-url', {
+                      mimeType: file.type,
+                      sizeBytes: file.size,
+                      filename: file.name,
+                    });
+
+                    // Upload to S3
+                    const uploadRes = await fetch(uploadUrl, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': file.type },
+                      body: file,
+                    });
+                    if (!uploadRes.ok) throw new Error('Upload failed');
+
+                    // Confirm logo URL in branding
+                    await api.post('/branding/logo', { logoUrl });
+                    setBranding({ ...branding, logoUrl });
+                    setMessage({ type: 'success', text: 'Logo uploaded successfully' });
+                  } catch (err) {
+                    setMessage({
+                      type: 'error',
+                      text: err instanceof Error ? err.message : 'Logo upload failed',
+                    });
+                  }
+                }}
               />
             </div>
             <p className="mt-1 text-xs text-gray-500">
