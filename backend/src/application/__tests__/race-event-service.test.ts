@@ -154,6 +154,23 @@ describe('RaceEventService', () => {
     );
   });
 
+  it('derives teams from participants when HTML extraction returns no teams', async () => {
+    const { client, parser, eventPublisher } = createMocks();
+    const service = new RaceEventService(client, parser, eventPublisher);
+
+    vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig);
+    vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
+    // Metadata with empty teams (HTML select not present / JS-rendered)
+    vi.mocked(parser.parseEventMetadata).mockReturnValue({ ...sampleMetadata, teams: [] });
+    vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
+    vi.mocked(parser.parseParticipants).mockReturnValue(sampleParticipants);
+
+    const result = await service.importEvent('https://my.raceresult.com/411620/', '411620');
+
+    // Teams should be derived from participants, sorted alphabetically
+    expect(result.metadata.teams).toEqual(['Alpine Riders', 'Brighton Blazers', 'Canyon Chargers']);
+  });
+
   it('uses empty listName when TabConfig is absent', async () => {
     const { client, parser, eventPublisher } = createMocks();
     const service = new RaceEventService(client, parser, eventPublisher);
