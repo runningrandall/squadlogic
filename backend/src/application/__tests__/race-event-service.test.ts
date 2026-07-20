@@ -133,6 +133,45 @@ describe('RaceEventService', () => {
     });
   });
 
+  it('uses empty listName when TabConfig has no non-hidden lists', async () => {
+    const { client, parser, eventPublisher } = createMocks();
+    const service = new RaceEventService(client, parser, eventPublisher);
+
+    const allHiddenConfig: RaceResultConfig = {
+      ...sampleConfig,
+      TabConfig: { Lists: [{ Name: 'A', Mode: 'hidden', ID: '1' }] },
+    };
+    vi.mocked(client.fetchEventConfig).mockResolvedValue(allHiddenConfig);
+    vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
+    vi.mocked(parser.parseEventMetadata).mockReturnValue(sampleMetadata);
+    vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
+    vi.mocked(parser.parseParticipants).mockReturnValue(sampleParticipants);
+
+    await service.importEvent('https://my.raceresult.com/411620/', '411620');
+
+    expect(client.fetchParticipants).toHaveBeenCalledWith(
+      '411620', 'abc123def456', '', 'my-us-1.raceresult.com',
+    );
+  });
+
+  it('uses empty listName when TabConfig is absent', async () => {
+    const { client, parser, eventPublisher } = createMocks();
+    const service = new RaceEventService(client, parser, eventPublisher);
+
+    const noTabConfig: RaceResultConfig = { ...sampleConfig, TabConfig: undefined };
+    vi.mocked(client.fetchEventConfig).mockResolvedValue(noTabConfig);
+    vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
+    vi.mocked(parser.parseEventMetadata).mockReturnValue(sampleMetadata);
+    vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
+    vi.mocked(parser.parseParticipants).mockReturnValue(sampleParticipants);
+
+    await service.importEvent('https://my.raceresult.com/411620/', '411620');
+
+    expect(client.fetchParticipants).toHaveBeenCalledWith(
+      '411620', 'abc123def456', '', 'my-us-1.raceresult.com',
+    );
+  });
+
   describe('getTeamList', () => {
     let service: RaceEventService;
 
@@ -175,6 +214,16 @@ describe('RaceEventService', () => {
     it('TC-025: returns empty array when teams array is empty', () => {
       const teams = service.getTeamList([], sampleParticipants);
       expect(teams).toEqual([]);
+    });
+
+    it('skips participants with empty team string', () => {
+      const withNoTeam = [
+        ...sampleParticipants,
+        { firstName: 'X', lastName: 'Y', team: '', category: 'Varsity', bibNumber: '999' },
+      ];
+      const teams = service.getTeamList(['Brighton Blazers'], withNoTeam);
+      // The empty-team participant does not inflate any team count
+      expect(teams.find((t) => t.name === 'Brighton Blazers')?.count).toBe(3);
     });
   });
 });

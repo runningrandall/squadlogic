@@ -12,7 +12,7 @@ export default defineConfig({
       exclude: ['src/**/*.test.ts', 'src/server.ts', 'src/lambda.ts', 'src/app.ts', 'src/ports/**', 'src/adapters/google-sheets-adapter.ts', 'src/domain/pagination.ts'],
       thresholds: {
         lines: 95,
-        branches: 89,
+        branches: 95,
         functions: 95,
         statements: 95,
       },

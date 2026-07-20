@@ -64,4 +64,24 @@ describe('TeamBrandingDynamoRepository', () => {
     expect(result.primaryColor).toBe('#FF0000');
     expect(mockPatch).toHaveBeenCalledWith({ userId: 'user-1', brandingId: 'b-1' });
   });
+
+  it('updates all branding fields at once', async () => {
+    const updated = { ...sampleBranding, teamDisplayName: 'New Name', tertiaryColor: '#CCCCCC', logoUrl: 'https://s3/logo.png' };
+    mockGo.mockResolvedValue({ data: updated });
+    await repo.update('user-1', 'b-1', {
+      teamDisplayName: 'New Name',
+      primaryColor: '#1E3A5F',
+      tertiaryColor: '#CCCCCC',
+      logoUrl: 'https://s3/logo.png',
+    });
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({ teamDisplayName: 'New Name', tertiaryColor: '#CCCCCC', logoUrl: 'https://s3/logo.png' }),
+    );
+  });
+
+  it('updates only teamDisplayName (covers FALSE branches for other fields)', async () => {
+    mockGo.mockResolvedValue({ data: { ...sampleBranding, teamDisplayName: 'Only Name' } });
+    await repo.update('user-1', 'b-1', { teamDisplayName: 'Only Name' });
+    expect(mockSet).toHaveBeenCalledWith({ teamDisplayName: 'Only Name' });
+  });
 });

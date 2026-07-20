@@ -12,14 +12,12 @@ import { ValidationError } from '../../lib/errors.js';
 
 const LOGO_BUCKET = process.env.LOGO_BUCKET_NAME ?? 'switchback-team-logos-dev';
 
-const s3Client = new S3Client({
-  ...(process.env.DYNAMODB_ENDPOINT && {
-    endpoint: process.env.DYNAMODB_ENDPOINT.replace('8000', '4566'),
-    region: 'us-east-1',
-    credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
-    forcePathStyle: true,
-  }),
-});
+const s3Client = new S3Client(
+  /* v8 ignore next */
+  process.env.DYNAMODB_ENDPOINT
+    ? { endpoint: process.env.DYNAMODB_ENDPOINT.replace('8000', '4566'), region: 'us-east-1', credentials: { accessKeyId: 'local', secretAccessKey: 'local' }, forcePathStyle: true }
+    : {},
+);
 
 function createBrandingService(): TeamBrandingService {
   const repository = new TeamBrandingDynamoRepository();

@@ -54,6 +54,13 @@ describe('GroupMemberDynamoRepository', () => {
       expect(GroupMemberEntity.create).toHaveBeenCalled();
       expect(result).toEqual(mockMember);
     });
+
+    it('creates group member without role (uses default "member")', async () => {
+      const noRole = { ...mockMember, role: undefined };
+      mockGo.mockResolvedValueOnce({ data: mockMember });
+      await repo.add(noRole as any);
+      expect(GroupMemberEntity.create).toHaveBeenCalled();
+    });
   });
 
   describe('getById', () => {
@@ -125,6 +132,12 @@ describe('GroupMemberDynamoRepository', () => {
       const result = await repo.listByAthlete('org-001', 'athlete-002');
       expect(result.items).toEqual([]);
       expect(result.cursor).toBeUndefined();
+    });
+
+    it('passes cursor when provided', async () => {
+      mockGo.mockResolvedValueOnce({ data: [], cursor: null });
+      await repo.listByAthlete('org-001', 'athlete-002', { cursor: 'abc', limit: 5 });
+      expect(GroupMemberEntity.query.byAthlete).toHaveBeenCalled();
     });
   });
 

@@ -92,12 +92,46 @@ describe('Race event routes', () => {
     });
   });
 
+  const sampleMetadata = {
+    eventName: 'Test Event', eventDate: '2026-08-02', eventLocation: 'Test, UT',
+    eventId: '2', sourceUrl: 'https://my.raceresult.com/2/', teams: ['Team A'],
+  };
+  const sampleParticipants = [
+    { firstName: 'J', lastName: 'D', team: 'Team A', category: 'V Boys', bibNumber: '1' },
+  ];
+  const sampleSchedule = {
+    teamName: 'Team A', eventName: 'Test Event', eventDate: '2026-08-02',
+    totalAthletes: 1, waves: [],
+  };
+
+  async function importAndGetEventId(eventId = '2') {
+    mockRaceEventService.importEvent.mockResolvedValue({
+      metadata: { ...sampleMetadata, eventId },
+      participants: sampleParticipants,
+    });
+    await app.inject({
+      method: 'POST', url: '/race-events/import', headers,
+      payload: { url: `https://my.raceresult.com/${eventId}/` },
+    });
+    return eventId;
+  }
+
   describe('GET /race-events/:eventId/teams', () => {
     it('returns 400 when event not imported', async () => {
       const res = await app.inject({
         method: 'GET', url: '/race-events/999/teams', headers,
       });
       expect(res.statusCode).toBe(400);
+    });
+
+    it('returns teams when event is imported', async () => {
+      const eventId = await importAndGetEventId();
+      mockRaceEventService.getTeamList.mockReturnValue([{ name: 'Team A', count: 1 }]);
+      const res = await app.inject({
+        method: 'GET', url: `/race-events/${eventId}/teams`, headers,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().teams).toHaveLength(1);
     });
   });
 
@@ -111,7 +145,6 @@ describe('Race event routes', () => {
     });
 
     it('returns 400 when teamName missing', async () => {
-      // First import an event
       mockRaceEventService.importEvent.mockResolvedValue({
         metadata: { eventName: 'E', eventDate: 'D', eventLocation: 'L', eventId: '1', sourceUrl: 'u', teams: [] },
         participants: [{ firstName: 'A', lastName: 'B', team: 'T', category: 'C', bibNumber: '1' }],
@@ -123,6 +156,34 @@ describe('Race event routes', () => {
       });
       expect(res.statusCode).toBe(400);
     });
+
+    it('generates and returns enriched schedule', async () => {
+      const eventId = await importAndGetEventId('3');
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.calculateDefaults.mockReturnValue({ arrivalOverrides: new Map(), warmupDurationMinutes: 30, stagingBeforeMinutes: 20 });
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+
+      const res = await app.inject({
+        method: 'POST', url: `/race-events/${eventId}/schedule`, headers,
+        payload: { teamName: 'Team A' },
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('generates schedule with custom logistics overrides', async () => {
+      const eventId = await importAndGetEventId('4');
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.calculateDefaults.mockReturnValue({ arrivalOverrides: new Map(), warmupDurationMinutes: 20, stagingBeforeMinutes: 15 });
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+
+      const res = await app.inject({
+        method: 'POST', url: `/race-events/${eventId}/schedule`, headers,
+        payload: { teamName: 'Team A', warmupDurationMinutes: 20, stagingBeforeMinutes: 15 },
+      });
+      expect(res.statusCode).toBe(200);
+    });
   });
 
   describe('POST /race-events/:eventId/export/pdf', () => {
@@ -132,6 +193,43 @@ describe('Race event routes', () => {
         payload: { teamName: 'Test' },
       });
       expect(res.statusCode).toBe(400);
+    });
+
+    it('generates PDF with branding', async () => {
+      const eventId = await importAndGetEventId('5');
+      mockBrandingService.getBranding.mockResolvedValue({
+        teamDisplayName: 'Team A', primaryColor: '#000', tertiaryColor: '#FFF', logoUrl: null,
+      });
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.calculateDefaults.mockReturnValue({ arrivalOverrides: new Map(), warmupDurationMinutes: 30, stagingBeforeMinutes: 20 });
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+      mockPdfService.generatePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
+      mockPdfService.generateFilename.mockReturnValue('Team_A_2026-08-02_schedule.pdf');
+
+      const res = await app.inject({
+        method: 'POST', url: `/race-events/${eventId}/export/pdf`, headers,
+        payload: { teamName: 'Team A' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toContain('application/pdf');
+    });
+
+    it('generates PDF without branding (uses teamName as filename fallback)', async () => {
+      const eventId = await importAndGetEventId('6');
+      mockBrandingService.getBranding.mockResolvedValue(null);
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.calculateDefaults.mockReturnValue({ arrivalOverrides: new Map(), warmupDurationMinutes: 30, stagingBeforeMinutes: 20 });
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+      mockPdfService.generatePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
+      mockPdfService.generateFilename.mockReturnValue('Team_A_2026-08-02_schedule.pdf');
+
+      const res = await app.inject({
+        method: 'POST', url: `/race-events/${eventId}/export/pdf`, headers,
+        payload: { teamName: 'Team A' },
+      });
+      expect(res.statusCode).toBe(200);
     });
   });
 });

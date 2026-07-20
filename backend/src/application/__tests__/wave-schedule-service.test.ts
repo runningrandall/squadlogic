@@ -112,4 +112,36 @@ describe('WaveScheduleService', () => {
     // Brighton has no athletes in Wave 2 (JV A Boys) — Wave 2 should not appear
     expect(schedule.waves.find((w) => w.waveName === 'Wave 2 - HS')).toBeUndefined();
   });
+
+  it('maps entry with no laps to null in category schedule', () => {
+    const noLapsConfig: WaveConfig[] = [
+      {
+        configId: 'w1', organizationId: 'GLOBAL', waveName: 'Wave 1',
+        entries: [{ categoryName: 'Open', stageTime: '08:00', startTime: '08:20' }],
+        createdAt: '', updatedAt: '',
+      },
+    ];
+    const ps: RaceParticipant[] = [
+      { firstName: 'A', lastName: 'B', team: 'Team', category: 'Open', bibNumber: '1' },
+    ];
+    const schedule = service.generateSchedule('Team', ps, noLapsConfig, 'Event', '2026-08-02');
+    expect(schedule.waves[0].categories[0].laps).toBeNull();
+  });
+
+  it('sorts unassigned athletes with same last name by first name', () => {
+    const withSameLastName: RaceParticipant[] = [
+      { firstName: 'Zack', lastName: 'Smith', team: 'Brighton', category: 'Unknown', bibNumber: '1' },
+      { firstName: 'Amy', lastName: 'Smith', team: 'Brighton', category: 'Unknown', bibNumber: '2' },
+      { firstName: 'Mike', lastName: 'Adams', team: 'Brighton', category: 'Unknown', bibNumber: '3' },
+    ];
+
+    const schedule = service.generateSchedule('Brighton', withSameLastName, waveConfig, 'Test', '2026-08-02');
+    const unassigned = schedule.waves.find((w) => w.waveName === 'Unassigned');
+    const athletes = unassigned?.categories[0].athletes ?? [];
+
+    expect(athletes[0].lastName).toBe('Adams');
+    // Both Smiths are sorted by first name: Amy before Zack
+    expect(athletes[1].firstName).toBe('Amy');
+    expect(athletes[2].firstName).toBe('Zack');
+  });
 });

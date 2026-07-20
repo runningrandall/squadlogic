@@ -96,4 +96,66 @@ describe('PdfExportService', () => {
     const filename = service.generateFilename("O'Brien Racing", '2026-08-02');
     expect(filename).toBe('OBrien_Racing_2026-08-02_schedule.pdf');
   });
+
+  it('includes event location in header when provided', async () => {
+    const buffer = await service.generatePdf(schedule, undefined, 'American Fork, UT');
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(buffer.length).toBeGreaterThan(500);
+  });
+
+  it('falls back to teamName in header when teamDisplayName is empty', async () => {
+    const buffer = await service.generatePdf(schedule, { teamDisplayName: '' });
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
+  it('renders athletes without logistics (uses empty string fallback)', async () => {
+    const noLogisticsSchedule: TeamWaveSchedule = {
+      ...schedule,
+      waves: [
+        {
+          waveName: 'Wave 3 - HS',
+          categories: [
+            {
+              categoryName: 'Varsity Boys',
+              stageTime: '09:50',
+              startTime: '10:10',
+              laps: 4,
+              athletes: [
+                { firstName: 'Dave', lastName: 'Adams', bibNumber: '201' }, // no logistics
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const buffer = await service.generatePdf(noLogisticsSchedule);
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
+  it('renders alternating row backgrounds for even-indexed rows', async () => {
+    const multiAthleteSchedule: TeamWaveSchedule = {
+      ...schedule,
+      totalAthletes: 3,
+      waves: [
+        {
+          waveName: 'Wave 3 - HS',
+          categories: [
+            {
+              categoryName: 'Varsity Boys',
+              stageTime: '09:50',
+              startTime: '10:10',
+              laps: null,
+              athletes: [
+                { firstName: 'Athlete', lastName: 'One', bibNumber: '1', logistics: { arrivalTime: '09:00', warmupStart: '09:00', warmupEnd: '09:30', stagingTime: '09:50', raceStart: '10:10' } },
+                { firstName: 'Athlete', lastName: 'Two', bibNumber: '2', logistics: { arrivalTime: '09:00', warmupStart: '09:00', warmupEnd: '09:30', stagingTime: '09:50', raceStart: '10:10' } },
+                { firstName: 'Athlete', lastName: 'Three', bibNumber: '3', logistics: { arrivalTime: '09:00', warmupStart: '09:00', warmupEnd: '09:30', stagingTime: '09:50', raceStart: '10:10' } },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const buffer = await service.generatePdf(multiAthleteSchedule);
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+  });
 });

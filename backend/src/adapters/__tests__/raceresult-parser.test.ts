@@ -213,6 +213,12 @@ describe('RaceResultHtmlParser', () => {
       expect(result.eventDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
+    it('throws when date is completely unparseable (not ISO, not MM/DD/YYYY, not Date.parse-able)', () => {
+      const html = `<html><head><script type="application/ld+json">{"name":"T","startDate":"not-a-date-at-all","location":{"address":{"addressLocality":"A","addressRegion":"B"}}}</script></head></html>`;
+      // normalizeDate returns '' → eventDate is missing → throws
+      expect(() => parser.parseEventMetadata(html, '1', 'url')).toThrow('missing required metadata fields: eventDate');
+    });
+
     it('handles location with no address but has name', () => {
       const html = `<html><head><script type="application/ld+json">{"name":"T","startDate":"2026-08-02","location":{"name":"Venue Name"}}</script></head></html>`;
       const result = parser.parseEventMetadata(html, '1', 'url');
@@ -333,6 +339,74 @@ describe('RaceResultHtmlParser', () => {
 
       expect(result).toHaveLength(3);
       expect(result.map((p) => p.team)).toEqual(['Team A', 'Team A', 'Team B']);
+    });
+
+    it('handles single-word DisplayName (no space → empty lastName)', () => {
+      const body = buildNestedResponse(
+        ['iif(1;ucase([DisplayName]);"")'],
+        { '#1_Team': { '#1_Cat': [['MADONNA']] } },
+      );
+
+      const result = parser.parseParticipants(body);
+
+      expect(result[0].firstName).toBe('MADONNA');
+      expect(result[0].lastName).toBe('');
+    });
+
+    it('returns empty bibNumber when no BIB field present', () => {
+      const body = buildNestedResponse(
+        ['Firstname', 'Lastname'],
+        { '#1_Team': { '#1_Cat': [['Jane', 'Doe']] } },
+      );
+
+      const result = parser.parseParticipants(body);
+
+      expect(result[0].bibNumber).toBe('');
+    });
+
+    it('returns empty names when no name field is recognizable', () => {
+      const body = buildNestedResponse(
+        ['Grade', 'Score'],
+        { '#1_Team': { '#1_Cat': [['10', '95']] } },
+      );
+
+      const result = parser.parseParticipants(body);
+
+      expect(result[0].firstName).toBe('');
+      expect(result[0].lastName).toBe('');
+    });
+
+    it('skips non-object team data gracefully', () => {
+      const raw = JSON.stringify({
+        DataFields: ['BIB'],
+        data: { '#1_Team A': 'not-an-object' },
+      });
+
+      const result = parser.parseParticipants(raw);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('skips non-array category data gracefully', () => {
+      const raw = JSON.stringify({
+        DataFields: ['BIB'],
+        data: { '#1_Team A': { '#1_Cat': 'not-an-array' } },
+      });
+
+      const result = parser.parseParticipants(raw);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('skips non-array rows gracefully', () => {
+      const raw = JSON.stringify({
+        DataFields: ['BIB'],
+        data: { '#1_Team A': { '#1_Cat': ['not-a-row'] } },
+      });
+
+      const result = parser.parseParticipants(raw);
+
+      expect(result).toHaveLength(0);
     });
   });
 });

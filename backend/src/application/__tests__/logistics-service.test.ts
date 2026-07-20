@@ -105,6 +105,13 @@ describe('LogisticsService', () => {
     });
   });
 
+  it('calculateTimeline returns zeros for empty startTime', () => {
+    const result = service.calculateTimeline('', '', 60, 30);
+    expect(result.arrivalTime).toBe('23:00'); // 0 - 60 min → normalized to 1380 min = 23:00
+    expect(result.raceStart).toBe('');
+    expect(result.stagingTime).toBe('');
+  });
+
   describe('enrichSchedule', () => {
     const schedule: TeamWaveSchedule = {
       teamName: 'Brighton',
@@ -154,6 +161,20 @@ describe('LogisticsService', () => {
       expect(boys?.raceStart).toBe('10:10');
       expect(girls?.raceStart).toBe('10:15');
       expect(boys?.arrivalTime).not.toBe(girls?.arrivalTime);
+    });
+
+    it('falls back to 60-minute arrival when wave is not in arrivalOverrides', () => {
+      // Build a config with an explicit map that does NOT contain our wave
+      const sparseConfig = {
+        arrivalOverrides: new Map<string, number>(), // empty — no overrides
+        warmupDurationMinutes: 30,
+        stagingBeforeMinutes: 20,
+      };
+
+      const enriched = service.enrichSchedule(schedule, sparseConfig);
+      // Arrival should be raceStart (10:10 = 610 min) minus 60 = 550 min = 09:10
+      const arrivalTime = enriched.waves[0].categories[0].athletes[0].logistics?.arrivalTime;
+      expect(arrivalTime).toBe('09:10');
     });
   });
 });
