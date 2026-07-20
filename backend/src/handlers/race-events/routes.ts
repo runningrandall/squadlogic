@@ -193,10 +193,10 @@ export default async function raceEventRoutes(
         enriched = services.logistics.enrichSchedule(schedule, logisticsConfig);
       }
 
-      // Get branding
+      // Get branding (non-fatal — PDF generates without branding on lookup failure)
       /* v8 ignore next */
       const userId = request.userId ?? 'anonymous';
-      const branding = await services.branding.getBranding(userId);
+      const branding = await services.branding.getBranding(userId).catch(() => null);
 
       // Generate PDF
       const pdfBuffer = await services.pdf.generatePdf(

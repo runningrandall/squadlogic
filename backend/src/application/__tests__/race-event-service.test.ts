@@ -154,20 +154,44 @@ describe('RaceEventService', () => {
     );
   });
 
-  it('derives teams from participants when HTML extraction returns no teams', async () => {
+  it('uses groupFilters Type=1 as the authoritative team list', async () => {
     const { client, parser, eventPublisher } = createMocks();
     const service = new RaceEventService(client, parser, eventPublisher);
 
-    vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig);
+    const configWithGroupFilters: RaceResultConfig = {
+      ...sampleConfig,
+      groupFilters: [
+        { Type: 1, Values: ['Lehi HS', 'Brighton Blazers', 'Alta HS', 'Canyon Chargers'] },
+        { Type: 2, Values: ['Varsity Boys', 'JV A Boys'] }, // ignored — not Type 1
+      ],
+    };
+
+    vi.mocked(client.fetchEventConfig).mockResolvedValue(configWithGroupFilters);
     vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
-    // Metadata with empty teams (HTML select not present / JS-rendered)
+    vi.mocked(parser.parseEventMetadata).mockReturnValue({ ...sampleMetadata, teams: [] });
+    vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
+    // Only Lehi HS has participants — but all 4 teams should appear in metadata
+    vi.mocked(parser.parseParticipants).mockReturnValue([
+      { firstName: 'John', lastName: 'Adams', team: 'Lehi HS', category: 'Varsity Boys', bibNumber: '1' },
+    ]);
+
+    const result = await service.importEvent('https://my.raceresult.com/411620/', '411620');
+
+    expect(result.metadata.teams).toEqual(['Alta HS', 'Brighton Blazers', 'Canyon Chargers', 'Lehi HS']);
+  });
+
+  it('falls back to participant-derived teams when groupFilters is absent', async () => {
+    const { client, parser, eventPublisher } = createMocks();
+    const service = new RaceEventService(client, parser, eventPublisher);
+
+    vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig); // no groupFilters
+    vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
     vi.mocked(parser.parseEventMetadata).mockReturnValue({ ...sampleMetadata, teams: [] });
     vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
     vi.mocked(parser.parseParticipants).mockReturnValue(sampleParticipants);
 
     const result = await service.importEvent('https://my.raceresult.com/411620/', '411620');
 
-    // Teams should be derived from participants, sorted alphabetically
     expect(result.metadata.teams).toEqual(['Alpine Riders', 'Brighton Blazers', 'Canyon Chargers']);
   });
 
@@ -219,13 +243,15 @@ describe('RaceEventService', () => {
       expect(teams.find((t) => t.name === 'Canyon Chargers')?.count).toBe(1);
     });
 
-    it('TC-024: excludes zero-participant teams', () => {
+    it('TC-024: includes all registered teams even those with zero participants', () => {
       const teams = service.getTeamList(
         ['Alpine Riders', 'Ghost Team', 'Brighton Blazers'],
         sampleParticipants,
       );
-      expect(teams.map((t) => t.name)).not.toContain('Ghost Team');
-      expect(teams).toHaveLength(2);
+      // Ghost Team has no participants but is still included (from groupFilters)
+      expect(teams.map((t) => t.name)).toContain('Ghost Team');
+      expect(teams).toHaveLength(3);
+      expect(teams.find((t) => t.name === 'Ghost Team')?.count).toBe(0);
     });
 
     it('TC-025: returns empty array when teams array is empty', () => {

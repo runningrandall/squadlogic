@@ -47,9 +47,18 @@ export class RaceEventService {
       throw new Error('No participants found for this event.');
     }
 
-    // Always derive teams from participants — HTML scraping is unreliable
-    const uniqueTeams = [...new Set(participants.map((p) => p.team).filter(Boolean))];
-    metadata.teams = uniqueTeams.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    // Prefer groupFilters (Type 1 = club/team) from config — it has the full registered team list
+    // even when the participants endpoint only returns data for some teams.
+    const teamFilter = config.groupFilters?.find((f) => f.Type === 1);
+    if (teamFilter?.Values && teamFilter.Values.length > 0) {
+      metadata.teams = teamFilter.Values
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    } else {
+      // Fallback: derive from participants when groupFilters is absent
+      const uniqueTeams = [...new Set(participants.map((p) => p.team).filter(Boolean))];
+      metadata.teams = uniqueTeams.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    }
 
     // Publish domain event (fire-and-forget)
     this.eventPublisher
@@ -77,8 +86,8 @@ export class RaceEventService {
       countMap.set(p.team, (countMap.get(p.team) ?? 0) + 1);
     }
 
+    // Show ALL registered teams — some may have 0 participants if data hasn't been uploaded yet
     return teams
-      .filter((t) => (countMap.get(t) ?? 0) > 0)
       .map((name) => ({ name, count: countMap.get(name) ?? 0 }))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }

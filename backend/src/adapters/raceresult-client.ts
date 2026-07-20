@@ -25,6 +25,7 @@ export interface RaceResultConfig {
   TabConfig?: {
     Lists?: Array<{ Name: string; Mode: string; ID: string }>;
   };
+  groupFilters?: Array<{ Type: number; Values: string[] }>;
 }
 
 export class RaceResultClient implements RaceResultPort {
