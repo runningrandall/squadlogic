@@ -1,4 +1,3 @@
-import PDFDocument from 'pdfkit';
 import type { TeamWaveSchedule } from '../domain/race-event.js';
 
 export interface PdfBranding {
@@ -16,11 +15,13 @@ const DEFAULT_BRANDING: PdfBranding = {
 };
 
 export class PdfExportService {
-  generatePdf(
+  async generatePdf(
     schedule: TeamWaveSchedule,
     branding?: Partial<PdfBranding>,
     eventLocation?: string,
   ): Promise<Buffer> {
+    // Lazy-import pdfkit to avoid loading native modules at Lambda cold start
+    const PDFDocument = (await import('pdfkit')).default;
     const brand = { ...DEFAULT_BRANDING, ...branding };
 
     return new Promise((resolve, reject) => {

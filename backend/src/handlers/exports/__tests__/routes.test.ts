@@ -63,8 +63,9 @@ describe('Export routes', () => {
     });
 
     it('returns 401 on auth error', async () => {
-      const { GoogleSheetsAuthError } = await import('../../../adapters/google-sheets-adapter.js');
-      mockSheetsService.exportSchedule.mockRejectedValue(new GoogleSheetsAuthError('Auth failed'));
+      const authError = new Error('Auth failed');
+      authError.name = 'GoogleSheetsAuthError';
+      mockSheetsService.exportSchedule.mockRejectedValue(authError);
       const res = await app.inject({
         method: 'POST', url: '/race-events/411620/export/sheets', headers,
         payload: { schedule: sampleSchedule },
