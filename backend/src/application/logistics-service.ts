@@ -47,44 +47,49 @@ export class LogisticsService {
   ): TeamWaveSchedule {
     return {
       ...schedule,
-      waves: schedule.waves.map((wave) => ({
-        ...wave,
-        categories: wave.categories.map((cat) => {
-          const arrivalBefore =
-            config.arrivalOverrides.get(wave.waveName) ?? 60;
+      waves: schedule.waves.map((wave) => {
+        // Wave meeting = 60 min before the earliest race start in this wave,
+        // and is the same for every category within the wave.
+        const startMinutes = wave.categories
+          .map((cat) => this.parseTime(cat.startTime))
+          .filter((t) => t > 0);
+        const firstStart = startMinutes.length > 0 ? Math.min(...startMinutes) : 0;
+        const waveMeetingTime = firstStart > 0 ? this.formatTime(firstStart - 60) : '';
 
-          const logistics = this.calculateTimeline(
-            cat.startTime,
-            cat.stageTime,
-            arrivalBefore,
-            config.warmupDurationMinutes,
-          );
-
-          return {
+        return {
+          ...wave,
+          categories: wave.categories.map((cat) => ({
             ...cat,
             athletes: cat.athletes.map((a) => ({
               ...a,
-              logistics,
+              logistics: this.calculateTimeline(
+                cat.startTime,
+                cat.stageTime,
+                waveMeetingTime,
+                config.warmupDurationMinutes,
+              ),
             })),
-          };
-        }),
-      })),
+          })),
+        };
+      }),
     };
   }
 
   calculateTimeline(
     startTime: string,
     stageTime: string,
-    arrivalBeforeMinutes: number,
+    waveMeetingTime: string,
     warmupDurationMinutes: number,
   ): AthleteLogistics {
-    const startMinutes = this.parseTime(startTime);
-    const arrivalMinutes = startMinutes - arrivalBeforeMinutes;
-    const warmupEndMinutes = arrivalMinutes + warmupDurationMinutes;
+    if (!waveMeetingTime) {
+      return { waveMeetingTime: '', warmupStart: '', warmupEnd: '', stagingTime: stageTime, raceStart: startTime };
+    }
+    const meetingMinutes = this.parseTime(waveMeetingTime);
+    const warmupEndMinutes = meetingMinutes + warmupDurationMinutes;
 
     return {
-      arrivalTime: this.formatTime(arrivalMinutes),
-      warmupStart: this.formatTime(arrivalMinutes),
+      waveMeetingTime,
+      warmupStart: waveMeetingTime,
       warmupEnd: this.formatTime(warmupEndMinutes),
       stagingTime: stageTime,
       raceStart: startTime,

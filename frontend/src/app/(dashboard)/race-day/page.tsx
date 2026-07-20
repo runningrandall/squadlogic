@@ -21,7 +21,7 @@ interface TeamEntry {
 }
 
 interface AthleteLogistics {
-  arrivalTime: string;
+  waveMeetingTime: string;
   warmupStart: string;
   warmupEnd: string;
   stagingTime: string;
@@ -109,21 +109,10 @@ export default function RaceDayPage() {
     if (!importResult) return;
     setIsExporting(true);
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/race-events/${importResult.eventId}/export/pdf`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            teamName: selectedTeam,
-            waveConfig: [],
-          }),
-        },
+      const blob = await api.postBlob(
+        `/race-events/${importResult.eventId}/export/pdf`,
+        { teamName: selectedTeam, waveConfig: [] },
       );
-
-      if (!response.ok) throw new Error('PDF export failed');
-
-      const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
@@ -356,7 +345,7 @@ export default function RaceDayPage() {
                         <tr className="text-left text-xs text-gray-500 border-b">
                           <th className="px-4 py-2 font-medium">Athlete</th>
                           <th className="px-4 py-2 font-medium">Bib</th>
-                          <th className="px-4 py-2 font-medium">Arrive</th>
+                          <th className="px-4 py-2 font-medium">Wave Meeting</th>
                           <th className="px-4 py-2 font-medium">Warmup</th>
                           <th className="px-4 py-2 font-medium">WU End</th>
                           <th className="px-4 py-2 font-medium">Staging</th>
@@ -373,7 +362,7 @@ export default function RaceDayPage() {
                               {athlete.lastName}, {athlete.firstName}
                             </td>
                             <td className="px-4 py-2">{athlete.bibNumber}</td>
-                            <td className="px-4 py-2">{athlete.logistics?.arrivalTime ?? '—'}</td>
+                            <td className="px-4 py-2">{athlete.logistics?.waveMeetingTime ?? '—'}</td>
                             <td className="px-4 py-2">{athlete.logistics?.warmupStart ?? '—'}</td>
                             <td className="px-4 py-2">{athlete.logistics?.warmupEnd ?? '—'}</td>
                             <td className="px-4 py-2">{athlete.logistics?.stagingTime ?? '—'}</td>

@@ -190,7 +190,7 @@ describeE2E('IT-007: E2E URL to Export', () => {
           for (const athlete of cat.athletes) {
             // SC-11: logistics object present
             expect(athlete.logistics).toBeDefined();
-            expect(athlete.logistics!.arrivalTime).toMatch(/^\d{2}:\d{2}$/);
+            expect(athlete.logistics!.waveMeetingTime).toMatch(/^\d{2}:\d{2}$/);
             expect(athlete.logistics!.warmupStart).toMatch(/^\d{2}:\d{2}$/);
             expect(athlete.logistics!.warmupEnd).toMatch(/^\d{2}:\d{2}$/);
             expect(athlete.logistics!.stagingTime).toMatch(/^\d{2}:\d{2}$/);

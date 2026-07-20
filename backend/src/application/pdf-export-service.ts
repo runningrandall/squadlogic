@@ -80,8 +80,8 @@ export class PdfExportService {
     brand: PdfBranding,
   ): void {
     const leftMargin = 40;
-    const colWidths = [120, 40, 50, 50, 50, 50, 50];
-    const headers = ['Athlete', 'Bib', 'Arrive', 'WU Start', 'WU End', 'Stage', 'Race'];
+    const colWidths = [120, 40, 65, 50, 50, 50, 50];
+    const headers = ['Athlete', 'Bib', 'Wave Meeting', 'WU Start', 'WU End', 'Stage', 'Race'];
     const tableWidth = colWidths.reduce((s, w) => s + w, 0);
 
     for (const wave of schedule.waves) {
@@ -138,7 +138,7 @@ export class PdfExportService {
           const values = [
             `${athlete.lastName}, ${athlete.firstName}`,
             athlete.bibNumber,
-            athlete.logistics?.arrivalTime ?? '',
+            athlete.logistics?.waveMeetingTime ?? '',
             athlete.logistics?.warmupStart ?? '',
             athlete.logistics?.warmupEnd ?? '',
             athlete.logistics?.stagingTime ?? '',

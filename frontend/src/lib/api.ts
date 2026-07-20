@@ -25,11 +25,7 @@ async function getOrganizationId(): Promise<string | undefined> {
   }
 }
 
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown
-): Promise<T> {
+async function getAuthHeaders(): Promise<Record<string, string>> {
   const [token, organizationId] = await Promise.all([
     getAuthToken(),
     getOrganizationId(),
@@ -46,6 +42,16 @@ async function request<T>(
   if (organizationId) {
     headers["x-organization-id"] = organizationId;
   }
+
+  return headers;
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<T> {
+  const headers = await getAuthHeaders();
 
   const response = await fetch(`${BASE_URL}${path}`, {
     method,
@@ -70,9 +76,40 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
+async function requestBlob(
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<Blob> {
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (response.status === 401) {
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    throw new Error("Unauthorized");
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.message || `Request failed with status ${response.status}`
+    );
+  }
+
+  return response.blob();
+}
+
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body: unknown) => request<T>("POST", path, body),
   put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),
+  postBlob: (path: string, body: unknown) => requestBlob("POST", path, body),
 };

@@ -67,9 +67,9 @@ describe('LogisticsService', () => {
   });
 
   describe('calculateTimeline', () => {
-    it('TC-048: Varsity Boys timeline with arrival=70, warmup=30', () => {
-      const result = service.calculateTimeline('10:10', '09:50', 70, 30);
-      expect(result.arrivalTime).toBe('09:00');
+    it('TC-048: Varsity Boys timeline (wave meeting=09:00, warmup=30)', () => {
+      const result = service.calculateTimeline('10:10', '09:50', '09:00', 30);
+      expect(result.waveMeetingTime).toBe('09:00');
       expect(result.warmupStart).toBe('09:00');
       expect(result.warmupEnd).toBe('09:30');
       expect(result.stagingTime).toBe('09:50');
@@ -77,39 +77,41 @@ describe('LogisticsService', () => {
     });
 
     it('TC-049: Varsity Girls staggered start timeline', () => {
-      const result = service.calculateTimeline('10:15', '09:55', 70, 30);
-      expect(result.arrivalTime).toBe('09:05');
+      const result = service.calculateTimeline('10:15', '09:55', '09:05', 30);
+      expect(result.waveMeetingTime).toBe('09:05');
       expect(result.warmupStart).toBe('09:05');
       expect(result.warmupEnd).toBe('09:35');
       expect(result.stagingTime).toBe('09:55');
       expect(result.raceStart).toBe('10:15');
     });
 
-    it('TC-050: JV B Boys timeline with arrival=60, warmup=30', () => {
-      const result = service.calculateTimeline('08:00', '07:40', 60, 30);
-      expect(result.arrivalTime).toBe('07:00');
+    it('TC-050: JV B Boys timeline (wave meeting=07:00, warmup=30)', () => {
+      const result = service.calculateTimeline('08:00', '07:40', '07:00', 30);
+      expect(result.waveMeetingTime).toBe('07:00');
       expect(result.warmupStart).toBe('07:00');
       expect(result.warmupEnd).toBe('07:30');
       expect(result.stagingTime).toBe('07:40');
       expect(result.raceStart).toBe('08:00');
     });
 
-    it('TC-051: user override arrival=90 for Wave 3, Varsity Boys start=10:10', () => {
-      const result = service.calculateTimeline('10:10', '09:50', 90, 30);
-      expect(result.arrivalTime).toBe('08:40');
+    it('TC-051: earlier wave meeting (08:40) for wave starting at 10:10', () => {
+      const result = service.calculateTimeline('10:10', '09:50', '08:40', 30);
+      expect(result.waveMeetingTime).toBe('08:40');
     });
 
     it('TC-054: warmup recalculation — warmup=20 instead of 30', () => {
-      const result = service.calculateTimeline('10:10', '09:50', 70, 20);
+      const result = service.calculateTimeline('10:10', '09:50', '09:00', 20);
       expect(result.warmupEnd).toBe('09:20');
     });
-  });
 
-  it('calculateTimeline returns zeros for empty startTime', () => {
-    const result = service.calculateTimeline('', '', 60, 30);
-    expect(result.arrivalTime).toBe('23:00'); // 0 - 60 min → normalized to 1380 min = 23:00
-    expect(result.raceStart).toBe('');
-    expect(result.stagingTime).toBe('');
+    it('returns empty logistics when waveMeetingTime is empty', () => {
+      const result = service.calculateTimeline('', '', '', 30);
+      expect(result.waveMeetingTime).toBe('');
+      expect(result.warmupStart).toBe('');
+      expect(result.warmupEnd).toBe('');
+      expect(result.raceStart).toBe('');
+      expect(result.stagingTime).toBe('');
+    });
   });
 
   describe('enrichSchedule', () => {
@@ -153,17 +155,17 @@ describe('LogisticsService', () => {
       expect(varsityBoys[0].logistics).toEqual(varsityBoys[1].logistics);
     });
 
-    it('TC-053: different categories in same wave have different times', () => {
+    it('TC-053: different categories in same wave share wave meeting time but have different race starts', () => {
       const config = service.calculateDefaults(waveConfig);
       const enriched = service.enrichSchedule(schedule, config);
       const boys = enriched.waves[0].categories[0].athletes[0].logistics;
       const girls = enriched.waves[0].categories[1].athletes[0].logistics;
       expect(boys?.raceStart).toBe('10:10');
       expect(girls?.raceStart).toBe('10:15');
-      expect(boys?.arrivalTime).not.toBe(girls?.arrivalTime);
+      expect(boys?.waveMeetingTime).toBe(girls?.waveMeetingTime);
     });
 
-    it('falls back to 60-minute arrival when wave is not in arrivalOverrides', () => {
+    it('falls back to 60-minute wave meeting when wave is not in arrivalOverrides', () => {
       // Build a config with an explicit map that does NOT contain our wave
       const sparseConfig = {
         arrivalOverrides: new Map<string, number>(), // empty — no overrides
@@ -172,9 +174,9 @@ describe('LogisticsService', () => {
       };
 
       const enriched = service.enrichSchedule(schedule, sparseConfig);
-      // Arrival should be raceStart (10:10 = 610 min) minus 60 = 550 min = 09:10
-      const arrivalTime = enriched.waves[0].categories[0].athletes[0].logistics?.arrivalTime;
-      expect(arrivalTime).toBe('09:10');
+      // Wave meeting = min startTime in wave (10:10 = 610 min) minus 60 = 550 min = 09:10
+      const waveMeetingTime = enriched.waves[0].categories[0].athletes[0].logistics?.waveMeetingTime;
+      expect(waveMeetingTime).toBe('09:10');
     });
   });
 });

@@ -47,11 +47,9 @@ export class RaceEventService {
       throw new Error('No participants found for this event.');
     }
 
-    // If HTML team extraction yielded no results, derive team list from participants
-    if (metadata.teams.length === 0) {
-      const uniqueTeams = [...new Set(participants.map((p) => p.team).filter(Boolean))];
-      metadata.teams = uniqueTeams.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-    }
+    // Always derive teams from participants — HTML scraping is unreliable
+    const uniqueTeams = [...new Set(participants.map((p) => p.team).filter(Boolean))];
+    metadata.teams = uniqueTeams.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
     // Publish domain event (fire-and-forget)
     this.eventPublisher

@@ -29,9 +29,9 @@ const sampleSchedule: TeamWaveSchedule = {
               lastName: 'Adams',
               bibNumber: '201',
               logistics: {
-                arrivalTime: '09:00',
-                warmupStart: '09:00',
-                warmupEnd: '09:30',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:50',
                 raceStart: '10:10',
               },
@@ -41,9 +41,9 @@ const sampleSchedule: TeamWaveSchedule = {
               lastName: 'Clark',
               bibNumber: '202',
               logistics: {
-                arrivalTime: '09:00',
-                warmupStart: '09:00',
-                warmupEnd: '09:30',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:50',
                 raceStart: '10:10',
               },
@@ -61,9 +61,9 @@ const sampleSchedule: TeamWaveSchedule = {
               lastName: 'Evans',
               bibNumber: '301',
               logistics: {
-                arrivalTime: '09:05',
-                warmupStart: '09:05',
-                warmupEnd: '09:35',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:55',
                 raceStart: '10:15',
               },
@@ -95,7 +95,7 @@ const multiWaveSchedule: TeamWaveSchedule = {
               lastName: 'Baker',
               bibNumber: '101',
               logistics: {
-                arrivalTime: '07:00',
+                waveMeetingTime: '07:00',
                 warmupStart: '07:00',
                 warmupEnd: '07:30',
                 stagingTime: '07:40',
@@ -120,9 +120,9 @@ const multiWaveSchedule: TeamWaveSchedule = {
               lastName: 'Adams',
               bibNumber: '201',
               logistics: {
-                arrivalTime: '09:00',
-                warmupStart: '09:00',
-                warmupEnd: '09:30',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:50',
                 raceStart: '10:10',
               },
@@ -132,9 +132,9 @@ const multiWaveSchedule: TeamWaveSchedule = {
               lastName: 'Clark',
               bibNumber: '202',
               logistics: {
-                arrivalTime: '09:00',
-                warmupStart: '09:00',
-                warmupEnd: '09:30',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:50',
                 raceStart: '10:10',
               },
@@ -152,9 +152,9 @@ const multiWaveSchedule: TeamWaveSchedule = {
               lastName: 'Evans',
               bibNumber: '301',
               logistics: {
-                arrivalTime: '09:05',
-                warmupStart: '09:05',
-                warmupEnd: '09:35',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:55',
                 raceStart: '10:15',
               },
@@ -198,7 +198,7 @@ describe('SheetsExportService', () => {
       const { rows } = service.buildRows(sampleSchedule);
       expect(rows[0].values).toEqual([
         'Wave', 'Category', 'Athlete Name', 'Bib #',
-        'Arrival', 'Warmup Start', 'Warmup End', 'Staging', 'Race Start', 'Laps',
+        'Wave Meeting', 'Warmup Start', 'Warmup End', 'Staging', 'Race Start', 'Laps',
       ]);
     });
 
@@ -218,9 +218,9 @@ describe('SheetsExportService', () => {
         'Varsity Boys',
         'Dave Adams',
         '201',
-        '09:00',
-        '09:00',
-        '09:30',
+        '09:10',
+        '09:10',
+        '09:40',
         '09:50',
         '10:10',
         4,
@@ -288,7 +288,7 @@ describe('SheetsExportService', () => {
                     lastName: 'Athlete',
                     bibNumber: '100',
                     logistics: {
-                      arrivalTime: '07:15',
+                      waveMeetingTime: '07:15',
                       warmupStart: '07:15',
                       warmupEnd: '07:45',
                       stagingTime: '08:00',

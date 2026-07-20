@@ -64,7 +64,7 @@ export interface ScheduleAthlete {
 }
 
 export interface AthleteLogistics {
-  arrivalTime: string;
+  waveMeetingTime: string;
   warmupStart: string;
   warmupEnd: string;
   stagingTime: string;
