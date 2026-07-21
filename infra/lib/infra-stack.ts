@@ -109,9 +109,9 @@ export class InfraStack extends cdk.Stack {
             s3.HttpMethods.DELETE,
           ],
           allowedOrigins:
-            stageName === 'dev'
-              ? ['http://localhost:3000']
-              : [`https://*.cloudfront.net`],
+            stageName === 'prod'
+              ? [`https://${props.domainName}`]
+              : ['http://localhost:3000', `https://${stageName}.${props.domainName}`],
           exposedHeaders: ['ETag'],
           maxAge: 3600,
         },
