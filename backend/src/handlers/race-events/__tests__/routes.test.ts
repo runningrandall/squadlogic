@@ -42,6 +42,11 @@ vi.mock('../../../application/team-branding-service.js', () => ({
 vi.mock('../../../lib/dynamodb.js', () => ({ tableConfig: { table: 'TestTable', client: {} } }));
 vi.mock('../../../lib/eventbridge.js', () => ({ putEvent: vi.fn(), eventBridgeClient: {} }));
 
+const mockParseCsvParticipants = vi.fn();
+vi.mock('../../../adapters/csv-participant-parser.js', () => ({
+  parseCsvParticipants: (...args: unknown[]) => mockParseCsvParticipants(...args),
+}));
+
 const { default: raceEventRoutes } = await import('../routes.js');
 
 const headers = { 'x-user-role': 'SuperAdmin', 'x-organization-id': 'org-123' };
@@ -242,6 +247,123 @@ describe('Race event routes', () => {
         payload: { teamName: 'Team A' },
       });
       expect(res.statusCode).toBe(200);
+    });
+  });
+
+  describe('POST /race-events/import/csv', () => {
+    it('imports participants from a valid CSV', async () => {
+      mockParseCsvParticipants.mockReturnValue(sampleParticipants);
+
+      const res = await app.inject({
+        method: 'POST', url: '/race-events/import/csv', headers,
+        payload: { csvData: 'Varsity Boys,,,,,\n,J D,,,, V Boys', teamName: 'Team A', eventName: 'Test', eventDate: '2026-08-02', eventLocation: 'UT' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().participantCount).toBe(1);
+      expect(res.json().teams).toEqual(['Team A']);
+      expect(res.json().eventName).toBe('Test');
+    });
+
+    it('uses defaults when eventName/Date/Location are omitted', async () => {
+      mockParseCsvParticipants.mockReturnValue(sampleParticipants);
+
+      const res = await app.inject({
+        method: 'POST', url: '/race-events/import/csv', headers,
+        payload: { csvData: 'some,csv', teamName: 'Team A' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().eventName).toBe('Race Event');
+      expect(res.json().eventDate).toBe('');
+    });
+
+    it('returns 400 when csvData is missing', async () => {
+      const res = await app.inject({
+        method: 'POST', url: '/race-events/import/csv', headers,
+        payload: { teamName: 'Team A' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('returns 400 when teamName is missing', async () => {
+      const res = await app.inject({
+        method: 'POST', url: '/race-events/import/csv', headers,
+        payload: { csvData: 'data' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('returns 400 when CSV has no participants', async () => {
+      mockParseCsvParticipants.mockReturnValue([]);
+      const res = await app.inject({
+        method: 'POST', url: '/race-events/import/csv', headers,
+        payload: { csvData: 'empty,csv', teamName: 'Team A' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
+  describe('CSV import path in schedule and PDF routes', () => {
+    async function importViaCsv(eventId: string) {
+      mockParseCsvParticipants.mockReturnValue(
+        sampleParticipants.map((p) => ({ ...p })),
+      );
+      await app.inject({
+        method: 'POST', url: '/race-events/import/csv', headers,
+        payload: { csvData: 'csv', teamName: 'Team A', eventName: 'E', eventDate: '2026-08-02', eventLocation: 'L' },
+      });
+      // The CSV import uses Date.now() as eventId — we need to retrieve it
+      return eventId;
+    }
+
+    it('schedule uses cached participants when fetchConfig is null (CSV import)', async () => {
+      // Import via CSV so fetchConfig is null
+      mockParseCsvParticipants.mockReturnValue(sampleParticipants);
+      const importRes = await app.inject({
+        method: 'POST', url: '/race-events/import/csv', headers,
+        payload: { csvData: 'csv', teamName: 'Team A' },
+      });
+      const { eventId } = importRes.json();
+
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.calculateDefaults.mockReturnValue({ arrivalOverrides: new Map(), warmupDurationMinutes: 30, stagingBeforeMinutes: 20 });
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+
+      const res = await app.inject({
+        method: 'POST', url: `/race-events/${eventId}/schedule`, headers,
+        payload: { teamName: 'Team A' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      // Must NOT have called getParticipantsForTeam (that's for URL imports only)
+      expect(mockRaceEventService.getParticipantsForTeam).not.toHaveBeenCalled();
+    });
+
+    it('PDF uses cached participants when fetchConfig is null (CSV import)', async () => {
+      mockParseCsvParticipants.mockReturnValue(sampleParticipants);
+      const importRes = await app.inject({
+        method: 'POST', url: '/race-events/import/csv', headers,
+        payload: { csvData: 'csv', teamName: 'Team A' },
+      });
+      const { eventId } = importRes.json();
+
+      mockBrandingService.getBranding.mockResolvedValue(null);
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.calculateDefaults.mockReturnValue({ arrivalOverrides: new Map(), warmupDurationMinutes: 30, stagingBeforeMinutes: 20 });
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+      mockPdfService.generatePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
+      mockPdfService.generateFilename.mockReturnValue('Team_A_schedule.pdf');
+
+      const res = await app.inject({
+        method: 'POST', url: `/race-events/${eventId}/export/pdf`, headers,
+        payload: { teamName: 'Team A' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockRaceEventService.getParticipantsForTeam).not.toHaveBeenCalled();
     });
   });
 });

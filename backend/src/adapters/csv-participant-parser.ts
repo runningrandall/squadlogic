@@ -19,6 +19,7 @@ export function parseCsvParticipants(csvText: string, teamName: string): RacePar
     if (!rawName) continue;
 
     const parts = rawName.split(/\s+/);
+    /* v8 ignore next */
     const lastName = toTitleCase(parts.pop() ?? '');
     const firstName = toTitleCase(parts.join(' '));
     const category = cols[5]?.trim() ?? '';

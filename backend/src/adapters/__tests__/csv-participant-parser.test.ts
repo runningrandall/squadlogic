@@ -65,4 +65,16 @@ describe('parseCsvParticipants', () => {
   it('returns empty array for empty CSV', () => {
     expect(parseCsvParticipants('', 'Team A')).toEqual([]);
   });
+
+  it('skips single-word names (no firstName)', () => {
+    const csv = ',ADAMS,,,, Varsity Boys';
+    const result = parseCsvParticipants(csv, 'Team A');
+    expect(result).toHaveLength(0);
+  });
+
+  it('skips rows with fewer than 6 columns (no category)', () => {
+    const csv = ',JOHN SMITH,10,11,Old Cat';
+    const result = parseCsvParticipants(csv, 'Team A');
+    expect(result).toHaveLength(0);
+  });
 });

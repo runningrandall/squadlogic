@@ -522,4 +522,39 @@ describe('Challenge routes', () => {
       );
     });
   });
+
+  describe('GET /groups/:groupId/completions', () => {
+    it('returns completions for a group', async () => {
+      mockCompletionService.listByGroup.mockResolvedValue({
+        data: [mockCompletion],
+        cursor: null,
+      });
+      const res = await app.inject({
+        method: 'GET',
+        url: '/groups/group-456/completions',
+        headers: orgAdminHeaders,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(mockCompletionService.listByGroup).toHaveBeenCalledWith(
+        'org-789',
+        'group-456',
+        { cursor: undefined, limit: undefined },
+      );
+    });
+
+    it('passes cursor and limit from query string', async () => {
+      mockCompletionService.listByGroup.mockResolvedValue({ data: [], cursor: null });
+      const res = await app.inject({
+        method: 'GET',
+        url: '/groups/group-456/completions?cursor=tok&limit=5',
+        headers: orgAdminHeaders,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(mockCompletionService.listByGroup).toHaveBeenCalledWith(
+        'org-789',
+        'group-456',
+        { cursor: 'tok', limit: 5 },
+      );
+    });
+  });
 });
