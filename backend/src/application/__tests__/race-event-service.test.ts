@@ -4,6 +4,7 @@ import type { RaceResultParser } from '../../ports/raceresult-port.js';
 import type { EventPublisher } from '../../ports/event-publisher.js';
 import type { RaceEventMetadata, RaceParticipant } from '../../domain/race-event.js';
 import type { RaceResultClient, RaceResultConfig } from '../../adapters/raceresult-client.js';
+import type { RaceEventFetchConfig } from '../race-event-service.js';
 
 function createMocks() {
   const client = {
@@ -80,6 +81,13 @@ describe('RaceEventService', () => {
       expect(client.fetchParticipants).toHaveBeenCalledWith(
         '411620', 'abc123def456', 'Active List', 'my-us-1.raceresult.com',
       );
+      // Verify fetchConfig is returned for later re-fetches
+      expect(result.fetchConfig).toEqual({
+        eventId: '411620',
+        key: 'abc123def456',
+        server: 'my-us-1.raceresult.com',
+        listName: 'Active List',
+      });
     });
 
     it('TC-019: throws when no participants found', async () => {
@@ -271,6 +279,47 @@ describe('RaceEventService', () => {
       const teams = service.getTeamList(['Brighton Blazers'], withNoTeam);
       // The empty-team participant does not inflate any team count
       expect(teams.find((t) => t.name === 'Brighton Blazers')?.count).toBe(3);
+    });
+  });
+
+  describe('getParticipantsForTeam', () => {
+    const fetchConfig: RaceEventFetchConfig = {
+      eventId: '411620',
+      key: 'abc123def456',
+      server: 'my-us-1.raceresult.com',
+      listName: 'Active List',
+    };
+
+    it('re-fetches participants and filters to the requested team', async () => {
+      const { client, parser, eventPublisher } = createMocks();
+      const service = new RaceEventService(client, parser, eventPublisher);
+
+      vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
+      vi.mocked(parser.parseParticipants).mockReturnValue(sampleParticipants);
+
+      const result = await service.getParticipantsForTeam(fetchConfig, 'Brighton Blazers');
+
+      expect(client.fetchParticipants).toHaveBeenCalledWith(
+        '411620', 'abc123def456', 'Active List', 'my-us-1.raceresult.com', 'Brighton Blazers',
+      );
+      // Only the 3 Brighton Blazers participants are returned
+      expect(result).toHaveLength(3);
+      expect(result.every((p) => p.team === 'Brighton Blazers')).toBe(true);
+    });
+
+    it('returns empty array when API returns participants for a different team', async () => {
+      const { client, parser, eventPublisher } = createMocks();
+      const service = new RaceEventService(client, parser, eventPublisher);
+
+      // API ignores team filter and returns Lehi HS data (different from requested team)
+      vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
+      vi.mocked(parser.parseParticipants).mockReturnValue([
+        { firstName: 'John', lastName: 'Adams', team: 'Lehi HS', category: 'Varsity Boys', bibNumber: '1' },
+      ]);
+
+      const result = await service.getParticipantsForTeam(fetchConfig, 'Lone Peak HS');
+
+      expect(result).toHaveLength(0);
     });
   });
 });

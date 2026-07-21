@@ -5,6 +5,7 @@ import errorHandlerPlugin from '../../../lib/errors.js';
 const mockRaceEventService = {
   importEvent: vi.fn(),
   getTeamList: vi.fn(),
+  getParticipantsForTeam: vi.fn(),
 };
 
 const mockWaveConfigService = { getConfig: vi.fn(), updateWave: vi.fn(), seedDefaults: vi.fn() };
@@ -64,6 +65,7 @@ describe('Race event routes', () => {
           eventId: '411620', sourceUrl: 'https://my.raceresult.com/411620/', teams: ['Team A'],
         },
         participants: [{ firstName: 'J', lastName: 'D', team: 'Team A', category: 'V Boys', bibNumber: '1' }],
+        fetchConfig: { eventId: '411620', key: 'testkey', server: 'my-us-1.raceresult.com', listName: '' },
       });
 
       const res = await app.inject({
@@ -104,10 +106,15 @@ describe('Race event routes', () => {
     totalAthletes: 1, waves: [],
   };
 
+  const sampleFetchConfig = {
+    eventId: '2', key: 'testkey', server: 'my-us-1.raceresult.com', listName: 'Test List',
+  };
+
   async function importAndGetEventId(eventId = '2') {
     mockRaceEventService.importEvent.mockResolvedValue({
       metadata: { ...sampleMetadata, eventId },
       participants: sampleParticipants,
+      fetchConfig: { ...sampleFetchConfig, eventId },
     });
     await app.inject({
       method: 'POST', url: '/race-events/import', headers,
@@ -148,6 +155,7 @@ describe('Race event routes', () => {
       mockRaceEventService.importEvent.mockResolvedValue({
         metadata: { eventName: 'E', eventDate: 'D', eventLocation: 'L', eventId: '1', sourceUrl: 'u', teams: [] },
         participants: [{ firstName: 'A', lastName: 'B', team: 'T', category: 'C', bibNumber: '1' }],
+        fetchConfig: { eventId: '1', key: 'k', server: 's', listName: '' },
       });
       await app.inject({ method: 'POST', url: '/race-events/import', headers, payload: { url: 'https://my.raceresult.com/1/' } });
 
@@ -159,6 +167,7 @@ describe('Race event routes', () => {
 
     it('generates and returns enriched schedule', async () => {
       const eventId = await importAndGetEventId('3');
+      mockRaceEventService.getParticipantsForTeam.mockResolvedValue(sampleParticipants);
       mockWaveConfigService.getConfig.mockResolvedValue([]);
       mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
       mockLogisticsService.calculateDefaults.mockReturnValue({ arrivalOverrides: new Map(), warmupDurationMinutes: 30, stagingBeforeMinutes: 20 });
@@ -173,6 +182,7 @@ describe('Race event routes', () => {
 
     it('generates schedule with custom logistics overrides', async () => {
       const eventId = await importAndGetEventId('4');
+      mockRaceEventService.getParticipantsForTeam.mockResolvedValue(sampleParticipants);
       mockWaveConfigService.getConfig.mockResolvedValue([]);
       mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
       mockLogisticsService.calculateDefaults.mockReturnValue({ arrivalOverrides: new Map(), warmupDurationMinutes: 20, stagingBeforeMinutes: 15 });
@@ -197,6 +207,7 @@ describe('Race event routes', () => {
 
     it('generates PDF with branding', async () => {
       const eventId = await importAndGetEventId('5');
+      mockRaceEventService.getParticipantsForTeam.mockResolvedValue(sampleParticipants);
       mockBrandingService.getBranding.mockResolvedValue({
         teamDisplayName: 'Team A', primaryColor: '#000', tertiaryColor: '#FFF', logoUrl: null,
       });
@@ -217,6 +228,7 @@ describe('Race event routes', () => {
 
     it('generates PDF without branding (uses teamName as filename fallback)', async () => {
       const eventId = await importAndGetEventId('6');
+      mockRaceEventService.getParticipantsForTeam.mockResolvedValue(sampleParticipants);
       mockBrandingService.getBranding.mockResolvedValue(null);
       mockWaveConfigService.getConfig.mockResolvedValue([]);
       mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);

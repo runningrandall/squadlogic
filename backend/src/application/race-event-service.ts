@@ -3,9 +3,17 @@ import type { RaceResultParser } from '../ports/raceresult-port.js';
 import type { EventPublisher } from '../ports/event-publisher.js';
 import type { RaceResultClient } from '../adapters/raceresult-client.js';
 
+export interface RaceEventFetchConfig {
+  eventId: string;
+  key: string;
+  server: string;
+  listName: string;
+}
+
 export interface RaceEventImportResult {
   metadata: RaceEventMetadata;
   participants: RaceParticipant[];
+  fetchConfig: RaceEventFetchConfig;
 }
 
 export class RaceEventService {
@@ -81,7 +89,28 @@ export class RaceEventService {
         // Failed event publication does not block the response
       });
 
-    return { metadata, participants };
+    return {
+      metadata,
+      participants,
+      fetchConfig: { eventId, key: config.key, server: config.server, listName },
+    };
+  }
+
+  async getParticipantsForTeam(
+    fetchConfig: RaceEventFetchConfig,
+    teamName: string,
+  ): Promise<RaceParticipant[]> {
+    const responseBody = await this.client.fetchParticipants(
+      fetchConfig.eventId,
+      fetchConfig.key,
+      fetchConfig.listName,
+      fetchConfig.server,
+      teamName,
+    );
+    const all = this.parser.parseParticipants(responseBody);
+    // Filter to the requested team — if the API ignored our team filter and returned
+    // a different team's data, this produces an empty list (honest behavior).
+    return all.filter((p) => p.team === teamName);
   }
 
   getTeamList(

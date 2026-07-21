@@ -49,6 +49,7 @@ export class RaceResultClient implements RaceResultPort {
     apiKey: string,
     listName: string,
     server?: string,
+    teamName?: string,
   ): Promise<string> {
     const host = server ?? 'my-us-1.raceresult.com';
     const params = new URLSearchParams({
@@ -59,6 +60,9 @@ export class RaceResultClient implements RaceResultPort {
       r: 'all',
       l: '0',
     });
+    if (teamName) {
+      params.set('groupFilter', teamName);
+    }
 
     const url = `https://${host}/${eventId}/participants/list?${params.toString()}`;
     return this.fetchWithTimeout(url);
