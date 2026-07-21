@@ -109,7 +109,6 @@ export class PdfExportService {
     for (const wave of schedule.waves) {
       const firstCat = wave.categories[0];
       const firstLogistics = firstCat?.athletes[0]?.logistics;
-      const athleteCount = wave.categories.reduce((s, c) => s + c.athletes.length, 0);
       const rowY = doc.y;
 
       if (rowIndex % 2 === 1) {
