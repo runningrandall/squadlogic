@@ -16,6 +16,7 @@ import { success } from '../../lib/response.js';
 import { ValidationError } from '../../lib/errors.js';
 import type { RaceEventMetadata, RaceParticipant, TeamWaveSchedule } from '../../domain/race-event.js';
 import type { RaceEventFetchConfig } from '../../application/race-event-service.js';
+import { parseCsvParticipants } from '../../adapters/csv-participant-parser.js';
 
 function createServices() {
   const eventPublisher = new EventBridgePublisher();
@@ -44,7 +45,7 @@ export default async function raceEventRoutes(
   // In-memory cache for imported event data (per-session, ephemeral)
   const importCache = new Map<
     string,
-    { metadata: RaceEventMetadata; participants: RaceParticipant[]; fetchConfig: RaceEventFetchConfig }
+    { metadata: RaceEventMetadata; participants: RaceParticipant[]; fetchConfig: RaceEventFetchConfig | null }
   >();
 
   // Schedule cache keyed by eventId:teamName
@@ -80,6 +81,61 @@ export default async function raceEventRoutes(
         eventLocation: result.metadata.eventLocation,
         teams: result.metadata.teams,
         participantCount: result.participants.length,
+      });
+    },
+  );
+
+  // POST /race-events/import/csv — import participants from a CSV file upload
+  fastify.post(
+    '/race-events/import/csv',
+    async (
+      request: FastifyRequest<{
+        Body: {
+          csvData: string;
+          teamName: string;
+          eventName?: string;
+          eventDate?: string;
+          eventLocation?: string;
+        };
+      }>,
+      reply,
+    ) => {
+      const body = request.body as {
+        csvData: string;
+        teamName: string;
+        eventName?: string;
+        eventDate?: string;
+        eventLocation?: string;
+      };
+
+      if (!body?.csvData) throw new ValidationError('csvData is required.');
+      if (!body?.teamName) throw new ValidationError('teamName is required.');
+
+      const participants = parseCsvParticipants(body.csvData, body.teamName);
+      if (participants.length === 0) {
+        throw new ValidationError('No participants found in the CSV. Check the file format.');
+      }
+
+      const eventId = `csv-${Date.now()}`;
+      const metadata: RaceEventMetadata = {
+        eventName: body.eventName ?? 'Race Event',
+        eventDate: body.eventDate ?? '',
+        eventLocation: body.eventLocation ?? '',
+        eventId,
+        sourceUrl: '',
+        teams: [body.teamName],
+      };
+
+      // fetchConfig is null for CSV imports — no RaceResult re-fetch needed
+      importCache.set(eventId, { metadata, participants, fetchConfig: null });
+
+      return success(reply, {
+        eventId,
+        eventName: metadata.eventName,
+        eventDate: metadata.eventDate,
+        eventLocation: metadata.eventLocation,
+        teams: metadata.teams,
+        participantCount: participants.length,
       });
     },
   );
@@ -138,13 +194,11 @@ export default async function raceEventRoutes(
         throw new ValidationError('teamName is required.');
       }
 
-      // Re-fetch participants for the selected team from RaceResult.
-      // The API may restrict data to the key's default team; in that case this
-      // returns an empty list and the schedule will show 0 athletes for that team.
-      const teamParticipants = await services.raceEvent.getParticipantsForTeam(
-        cached.fetchConfig,
-        body.teamName,
-      );
+      // For CSV imports fetchConfig is null — use cached participants directly.
+      // For URL imports, re-fetch from RaceResult filtered to the selected team.
+      const teamParticipants = cached.fetchConfig
+        ? await services.raceEvent.getParticipantsForTeam(cached.fetchConfig, body.teamName)
+        : cached.participants.filter((p) => p.team === body.teamName);
 
       // Read wave config from DynamoDB (seeds defaults on first access)
       const waveConfig = await services.waveConfig.getConfig();
@@ -194,10 +248,9 @@ export default async function raceEventRoutes(
 
       // If no cached schedule, generate one with defaults
       if (!enriched) {
-        const teamParticipants = await services.raceEvent.getParticipantsForTeam(
-          cached.fetchConfig,
-          body.teamName,
-        );
+        const teamParticipants = cached.fetchConfig
+          ? await services.raceEvent.getParticipantsForTeam(cached.fetchConfig, body.teamName)
+          : cached.participants.filter((p) => p.team === body.teamName);
         const waveConfig = await services.waveConfig.getConfig();
         const schedule = services.schedule.generateSchedule(
           body.teamName, teamParticipants, waveConfig,

@@ -35,7 +35,8 @@ describe('RaceDayPage', () => {
   it('renders the URL input step by default', () => {
     render(<RaceDayPage />);
     expect(screen.getByText('Race Day Schedule')).toBeInTheDocument();
-    expect(screen.getByText('Import from RaceResult')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'RaceResult URL' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upload CSV' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('https://my.raceresult.com/411620/')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Import$/ })).toBeInTheDocument();
   });
@@ -209,6 +210,6 @@ describe('RaceDayPage', () => {
     });
 
     fireEvent.click(screen.getByText('Start Over'));
-    expect(screen.getByText('Import from RaceResult')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'RaceResult URL' })).toBeInTheDocument();
   });
 });

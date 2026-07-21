@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
@@ -58,7 +58,17 @@ interface Schedule {
 
 export default function RaceDayPage() {
   const [step, setStep] = useState<Step>('url');
+  const [importMode, setImportMode] = useState<'url' | 'csv'>('url');
   const [url, setUrl] = useState('');
+  // CSV import fields
+  const [csvTeamName, setCsvTeamName] = useState('');
+  const [csvEventName, setCsvEventName] = useState('');
+  const [csvEventDate, setCsvEventDate] = useState('');
+  const [csvEventLocation, setCsvEventLocation] = useState('');
+  const [csvFileName, setCsvFileName] = useState('');
+  const [csvData, setCsvData] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [selectedTeam, setSelectedTeam] = useState('');
@@ -67,6 +77,15 @@ export default function RaceDayPage() {
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [sheetsUrl, setSheetsUrl] = useState<string | null>(null);
+
+  function handleCsvFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => setCsvData((ev.target?.result as string) ?? '');
+    reader.readAsText(file);
+  }
 
   async function handleImport() {
     setError(null);
@@ -82,6 +101,32 @@ export default function RaceDayPage() {
       setStep('team');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import event');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleCsvImport() {
+    setError(null);
+    setIsLoading(true);
+    try {
+      const result = await api.post<ImportResult>('/race-events/import/csv', {
+        csvData,
+        teamName: csvTeamName,
+        eventName: csvEventName || undefined,
+        eventDate: csvEventDate || undefined,
+        eventLocation: csvEventLocation || undefined,
+      });
+      setImportResult(result);
+      setSelectedTeam(csvTeamName);
+
+      const teamData = await api.get<{ teams: TeamEntry[] }>(
+        `/race-events/${result.eventId}/teams`,
+      );
+      setTeams(teamData.teams);
+      setStep('team');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import CSV');
     } finally {
       setIsLoading(false);
     }
@@ -131,6 +176,13 @@ export default function RaceDayPage() {
   function handleReset() {
     setStep('url');
     setUrl('');
+    setCsvData('');
+    setCsvFileName('');
+    setCsvTeamName('');
+    setCsvEventName('');
+    setCsvEventDate('');
+    setCsvEventLocation('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setImportResult(null);
     setTeams([]);
     setSelectedTeam('');
@@ -193,30 +245,131 @@ export default function RaceDayPage() {
         </div>
       )}
 
-      {/* Step 1: URL Input */}
+      {/* Step 1: Import */}
       {step === 'url' && (
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Import from RaceResult</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            Paste a RaceResult event URL to import the participant roster and generate
-            your team&apos;s race day schedule.
-          </p>
-          <div className="flex gap-3">
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://my.raceresult.com/411620/"
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
+          {/* Mode tabs */}
+          <div className="flex border-b border-gray-200 mb-5">
             <button
-              onClick={handleImport}
-              disabled={!url || isLoading}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
+              onClick={() => setImportMode('url')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${importMode === 'url' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
-              {isLoading ? 'Importing...' : 'Import'}
+              RaceResult URL
+            </button>
+            <button
+              onClick={() => setImportMode('csv')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${importMode === 'csv' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              Upload CSV
             </button>
           </div>
+
+          {importMode === 'url' && (
+            <>
+              <p className="text-sm text-gray-500 mb-4">
+                Paste a RaceResult event URL to import the participant roster and generate
+                your team&apos;s race day schedule.
+              </p>
+              <div className="flex gap-3">
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://my.raceresult.com/411620/"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+                <button
+                  onClick={handleImport}
+                  disabled={!url || isLoading}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
+                >
+                  {isLoading ? 'Importing...' : 'Import'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {importMode === 'csv' && (
+            <>
+              <p className="text-sm text-gray-500 mb-4">
+                Upload your team&apos;s wave CSV file to generate a race day schedule without
+                needing a RaceResult URL. Columns: empty, name, last year grade, this year grade,
+                last year category, this year category.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Team Name *</label>
+                  <input
+                    type="text"
+                    value={csvTeamName}
+                    onChange={(e) => setCsvTeamName(e.target.value)}
+                    placeholder="Lehi HS"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Event Name</label>
+                    <input
+                      type="text"
+                      value={csvEventName}
+                      onChange={(e) => setCsvEventName(e.target.value)}
+                      placeholder="UTAH HS MTB 2026"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Event Date</label>
+                    <input
+                      type="date"
+                      value={csvEventDate}
+                      onChange={(e) => setCsvEventDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                    <input
+                      type="text"
+                      value={csvEventLocation}
+                      onChange={(e) => setCsvEventLocation(e.target.value)}
+                      placeholder="American Fork, UT"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">CSV File *</label>
+                  <div className="flex gap-3 items-center">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Choose file
+                    </button>
+                    <span className="text-sm text-gray-500">
+                      {csvFileName || 'No file selected'}
+                    </span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={handleCsvFileChange}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={handleCsvImport}
+                  disabled={!csvData || !csvTeamName || isLoading}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
+                >
+                  {isLoading ? 'Importing...' : 'Import CSV'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
