@@ -220,6 +220,10 @@ export class InfraStack extends cdk.Stack {
         banner:
           "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
         externalModules: ['@aws-sdk/*'],
+        // pdfkit uses __dirname to resolve built-in font files (e.g. Helvetica.afm).
+        // Bundling it into the ESM output loses __dirname, so we install it as a
+        // real node_modules package where Node's CJS loader provides __dirname correctly.
+        nodeModules: ['pdfkit'],
       },
       environment: {
         NODE_ENV: 'production',
