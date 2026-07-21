@@ -89,8 +89,8 @@ export class PdfExportService {
     doc.y += 16;
 
     // Table header
-    const sumCols = [160, 70, 70, 70, 80];
-    const sumHeaders = ['Wave', 'Stage', 'Race Start', 'Athletes', 'Categories'];
+    const sumCols = [150, 65, 65, 65, 65, 65];
+    const sumHeaders = ['Wave', 'Wave Meeting', 'WU Start', 'WU End', 'Stage', 'Race Start'];
     const sumWidth = sumCols.reduce((s, w) => s + w, 0);
 
     const thY = doc.y;
@@ -103,13 +103,13 @@ export class PdfExportService {
     }
     doc.y = thY + 16;
 
-    // One row per wave
+    // One row per wave — pull timing from the first athlete of the first category
     doc.font('Helvetica').fontSize(8);
     let rowIndex = 0;
     for (const wave of schedule.waves) {
       const firstCat = wave.categories[0];
+      const firstLogistics = firstCat?.athletes[0]?.logistics;
       const athleteCount = wave.categories.reduce((s, c) => s + c.athletes.length, 0);
-      const categoryNames = wave.categories.map((c) => c.categoryName).join(', ');
       const rowY = doc.y;
 
       if (rowIndex % 2 === 1) {
@@ -119,10 +119,11 @@ export class PdfExportService {
       doc.fillColor('#000000');
       const rowValues = [
         wave.waveName,
+        firstLogistics?.waveMeetingTime ?? '—',
+        firstLogistics?.warmupStart ?? '—',
+        firstLogistics?.warmupEnd ?? '—',
         firstCat?.stageTime ?? '—',
         firstCat?.startTime ?? '—',
-        String(athleteCount),
-        categoryNames,
       ];
       x = leftMargin;
       for (let i = 0; i < rowValues.length; i++) {
