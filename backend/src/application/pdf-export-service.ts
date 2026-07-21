@@ -92,10 +92,11 @@ export class PdfExportService {
       }
 
       // Wave header
-      doc.rect(leftMargin, doc.y, tableWidth, 22).fill(brand.primaryColor);
+      const waveY = doc.y;
+      doc.rect(leftMargin, waveY, tableWidth, 22).fill(brand.primaryColor);
       doc.fillColor('#FFFFFF').fontSize(11).font('Helvetica-Bold');
-      doc.text(wave.waveName, leftMargin + 6, doc.y + 5, { width: tableWidth - 12 });
-      doc.y += 26;
+      doc.text(wave.waveName, leftMargin + 6, waveY + 5, { width: tableWidth - 12, lineBreak: false });
+      doc.y = waveY + 26;
 
       for (const cat of wave.categories) {
         if (doc.y > doc.page.height - 80) {
@@ -104,20 +105,22 @@ export class PdfExportService {
         }
 
         // Category sub-header
-        doc.rect(leftMargin, doc.y, tableWidth, 18).fill(brand.tertiaryColor);
+        const catY = doc.y;
+        doc.rect(leftMargin, catY, tableWidth, 18).fill(brand.tertiaryColor);
         doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
         const catLabel = `${cat.categoryName}  (Start: ${cat.startTime}, Stage: ${cat.stageTime}, ${cat.laps ?? '—'} laps)`;
-        doc.text(catLabel, leftMargin + 6, doc.y + 4, { width: tableWidth - 12 });
-        doc.y += 20;
+        doc.text(catLabel, leftMargin + 6, catY + 4, { width: tableWidth - 12, lineBreak: false });
+        doc.y = catY + 20;
 
-        // Column headers
+        // Column headers — fix y for all columns before the loop
         doc.fillColor('#666666').fontSize(7).font('Helvetica-Bold');
+        const headerY = doc.y;
         let x = leftMargin;
         for (let i = 0; i < headers.length; i++) {
-          doc.text(headers[i], x + 3, doc.y + 2, { width: colWidths[i] - 6 });
+          doc.text(headers[i], x + 3, headerY + 2, { width: colWidths[i] - 6, lineBreak: false });
           x += colWidths[i];
         }
-        doc.y += 14;
+        doc.y = headerY + 14;
 
         // Athlete rows
         doc.font('Helvetica').fontSize(8).fillColor('#000000');
@@ -128,9 +131,11 @@ export class PdfExportService {
             doc.y = 40;
           }
 
+          const rowY = doc.y;
+
           // Alternating row background
           if (rowIndex % 2 === 1) {
-            doc.rect(leftMargin, doc.y, tableWidth, 14).fill('#F9F9F9');
+            doc.rect(leftMargin, rowY, tableWidth, 14).fill('#F9F9F9');
             doc.fillColor('#000000');
           }
 
@@ -146,11 +151,11 @@ export class PdfExportService {
           ];
 
           for (let i = 0; i < values.length; i++) {
-            doc.text(values[i], x + 3, doc.y + 3, { width: colWidths[i] - 6 });
+            doc.text(values[i], x + 3, rowY + 3, { width: colWidths[i] - 6, lineBreak: false });
             x += colWidths[i];
           }
 
-          doc.y += 14;
+          doc.y = rowY + 14;
           rowIndex++;
         }
 
