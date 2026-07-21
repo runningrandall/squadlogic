@@ -52,7 +52,7 @@ export class InfraStack extends cdk.Stack {
         stageName === 'dev'
           ? cdk.RemovalPolicy.DESTROY
           : cdk.RemovalPolicy.RETAIN,
-      pointInTimeRecovery: stageName !== 'dev',
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: stageName !== 'dev' },
     });
 
     this.table.addGlobalSecondaryIndex({

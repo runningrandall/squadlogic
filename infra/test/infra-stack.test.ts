@@ -73,7 +73,7 @@ describe('InfraStack', () => {
           {
             AllowedHeaders: ['*'],
             AllowedMethods: Match.arrayWith(['GET', 'PUT', 'POST', 'DELETE']),
-            AllowedOrigins: ['https://*.cloudfront.net'],
+            AllowedOrigins: Match.arrayWith(['http://localhost:3000', 'https://test.squadlogic.io']),
             ExposedHeaders: ['ETag'],
             MaxAge: 3600,
           },
