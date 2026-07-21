@@ -6,7 +6,7 @@ let proxy: (event: APIGatewayProxyEventV2, context: Context) => Promise<APIGatew
 
 try {
   const app = await buildApp();
-  proxy = awsLambdaFastify(app);
+  proxy = awsLambdaFastify(app, { binaryMimeTypes: ['application/pdf'] });
 } catch (err) {
   console.error('Failed to initialize Fastify app:', err);
   proxy = async () => ({

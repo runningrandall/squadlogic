@@ -47,18 +47,27 @@ export class RaceEventService {
       throw new Error('No participants found for this event.');
     }
 
-    // Prefer groupFilters (Type 1 = club/team) from config — it has the full registered team list
-    // even when the participants endpoint only returns data for some teams.
-    const teamFilter = config.groupFilters?.find((f) => f.Type === 1);
-    if (teamFilter?.Values && teamFilter.Values.length > 0) {
-      metadata.teams = teamFilter.Values
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-    } else {
+    // Prefer groupFilters (Type 1 = club/team) from the participants list response body —
+    // it has the full registered team list even when the API only returns data for one team.
+    let teams: string[] = [];
+    try {
+      const parsed = JSON.parse(responseBody) as Record<string, unknown>;
+      const filters = parsed?.groupFilters as Array<{ Type: number; Values: string[] | null }> | undefined;
+      const teamFilter = filters?.find((f) => f.Type === 1);
+      if (teamFilter?.Values?.length) {
+        teams = teamFilter.Values
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      }
+    } catch {
+      // fall through to participant-derived fallback
+    }
+    if (teams.length === 0) {
       // Fallback: derive from participants when groupFilters is absent
       const uniqueTeams = [...new Set(participants.map((p) => p.team).filter(Boolean))];
-      metadata.teams = uniqueTeams.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      teams = uniqueTeams.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     }
+    metadata.teams = teams;
 
     // Publish domain event (fire-and-forget)
     this.eventPublisher

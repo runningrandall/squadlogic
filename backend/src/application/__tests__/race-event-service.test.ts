@@ -158,18 +158,19 @@ describe('RaceEventService', () => {
     const { client, parser, eventPublisher } = createMocks();
     const service = new RaceEventService(client, parser, eventPublisher);
 
-    const configWithGroupFilters: RaceResultConfig = {
-      ...sampleConfig,
+    // groupFilters lives in the participants list response body, not the config
+    const participantsBody = JSON.stringify({
       groupFilters: [
         { Type: 1, Values: ['Lehi HS', 'Brighton Blazers', 'Alta HS', 'Canyon Chargers'] },
         { Type: 2, Values: ['Varsity Boys', 'JV A Boys'] }, // ignored — not Type 1
       ],
-    };
+      data: {},
+    });
 
-    vi.mocked(client.fetchEventConfig).mockResolvedValue(configWithGroupFilters);
+    vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig);
     vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
     vi.mocked(parser.parseEventMetadata).mockReturnValue({ ...sampleMetadata, teams: [] });
-    vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
+    vi.mocked(client.fetchParticipants).mockResolvedValue(participantsBody);
     // Only Lehi HS has participants — but all 4 teams should appear in metadata
     vi.mocked(parser.parseParticipants).mockReturnValue([
       { firstName: 'John', lastName: 'Adams', team: 'Lehi HS', category: 'Varsity Boys', bibNumber: '1' },
@@ -184,10 +185,13 @@ describe('RaceEventService', () => {
     const { client, parser, eventPublisher } = createMocks();
     const service = new RaceEventService(client, parser, eventPublisher);
 
-    vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig); // no groupFilters
+    // Response body with no groupFilters — service falls back to participant teams
+    const participantsBody = JSON.stringify({ data: {} });
+
+    vi.mocked(client.fetchEventConfig).mockResolvedValue(sampleConfig);
     vi.mocked(client.fetchEventPage).mockResolvedValue('<html>...</html>');
     vi.mocked(parser.parseEventMetadata).mockReturnValue({ ...sampleMetadata, teams: [] });
-    vi.mocked(client.fetchParticipants).mockResolvedValue('[...]');
+    vi.mocked(client.fetchParticipants).mockResolvedValue(participantsBody);
     vi.mocked(parser.parseParticipants).mockReturnValue(sampleParticipants);
 
     const result = await service.importEvent('https://my.raceresult.com/411620/', '411620');
