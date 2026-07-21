@@ -84,13 +84,13 @@ export class LogisticsService {
     if (!waveMeetingTime) {
       return { waveMeetingTime: '', warmupStart: '', warmupEnd: '', stagingTime: stageTime, raceStart: startTime };
     }
-    const meetingMinutes = this.parseTime(waveMeetingTime);
-    const warmupEndMinutes = meetingMinutes + warmupDurationMinutes;
+    const stageMinutes = this.parseTime(stageTime);
+    const warmupStartMinutes = stageMinutes - warmupDurationMinutes;
 
     return {
       waveMeetingTime,
-      warmupStart: waveMeetingTime,
-      warmupEnd: this.formatTime(warmupEndMinutes),
+      warmupStart: this.formatTime(warmupStartMinutes),
+      warmupEnd: stageTime,
       stagingTime: stageTime,
       raceStart: startTime,
     };

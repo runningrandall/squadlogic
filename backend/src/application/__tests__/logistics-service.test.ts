@@ -70,8 +70,8 @@ describe('LogisticsService', () => {
     it('TC-048: Varsity Boys timeline (wave meeting=09:00, warmup=30)', () => {
       const result = service.calculateTimeline('10:10', '09:50', '09:00', 30);
       expect(result.waveMeetingTime).toBe('09:00');
-      expect(result.warmupStart).toBe('09:00');
-      expect(result.warmupEnd).toBe('09:30');
+      expect(result.warmupStart).toBe('09:20'); // 30 min before staging 09:50
+      expect(result.warmupEnd).toBe('09:50');   // ends at staging time
       expect(result.stagingTime).toBe('09:50');
       expect(result.raceStart).toBe('10:10');
     });
@@ -79,8 +79,8 @@ describe('LogisticsService', () => {
     it('TC-049: Varsity Girls staggered start timeline', () => {
       const result = service.calculateTimeline('10:15', '09:55', '09:05', 30);
       expect(result.waveMeetingTime).toBe('09:05');
-      expect(result.warmupStart).toBe('09:05');
-      expect(result.warmupEnd).toBe('09:35');
+      expect(result.warmupStart).toBe('09:25'); // 30 min before staging 09:55
+      expect(result.warmupEnd).toBe('09:55');   // ends at staging time
       expect(result.stagingTime).toBe('09:55');
       expect(result.raceStart).toBe('10:15');
     });
@@ -88,8 +88,8 @@ describe('LogisticsService', () => {
     it('TC-050: JV B Boys timeline (wave meeting=07:00, warmup=30)', () => {
       const result = service.calculateTimeline('08:00', '07:40', '07:00', 30);
       expect(result.waveMeetingTime).toBe('07:00');
-      expect(result.warmupStart).toBe('07:00');
-      expect(result.warmupEnd).toBe('07:30');
+      expect(result.warmupStart).toBe('07:10'); // 30 min before staging 07:40
+      expect(result.warmupEnd).toBe('07:40');   // ends at staging time
       expect(result.stagingTime).toBe('07:40');
       expect(result.raceStart).toBe('08:00');
     });
@@ -101,7 +101,8 @@ describe('LogisticsService', () => {
 
     it('TC-054: warmup recalculation — warmup=20 instead of 30', () => {
       const result = service.calculateTimeline('10:10', '09:50', '09:00', 20);
-      expect(result.warmupEnd).toBe('09:20');
+      expect(result.warmupStart).toBe('09:30'); // 20 min before staging 09:50
+      expect(result.warmupEnd).toBe('09:50');   // ends at staging time
     });
 
     it('returns empty logistics when waveMeetingTime is empty', () => {
