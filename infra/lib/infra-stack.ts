@@ -47,6 +47,7 @@ export class InfraStack extends cdk.Stack {
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl',
       removalPolicy:
         stageName === 'dev'
           ? cdk.RemovalPolicy.DESTROY

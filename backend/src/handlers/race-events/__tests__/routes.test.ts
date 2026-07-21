@@ -39,8 +39,12 @@ vi.mock('../../../application/team-branding-service.js', () => ({
   TeamBrandingService: vi.fn(() => mockBrandingService),
 }));
 
-vi.mock('../../../lib/dynamodb.js', () => ({ tableConfig: { table: 'TestTable', client: {} } }));
+vi.mock('../../../lib/dynamodb.js', () => ({ tableConfig: { table: 'TestTable', client: {} }, dynamoClient: {}, TABLE_NAME: 'TestTable' }));
 vi.mock('../../../lib/eventbridge.js', () => ({ putEvent: vi.fn(), eventBridgeClient: {} }));
+vi.mock('../../../lib/race-session-store.js', () => ({
+  setRaceSession: vi.fn().mockResolvedValue(undefined),
+  getRaceSession: vi.fn().mockResolvedValue(null),
+}));
 
 const mockParseCsvParticipants = vi.fn();
 vi.mock('../../../adapters/csv-participant-parser.js', () => ({

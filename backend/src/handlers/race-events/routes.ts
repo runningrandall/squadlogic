@@ -17,6 +17,8 @@ import { ValidationError } from '../../lib/errors.js';
 import type { RaceEventMetadata, RaceParticipant, TeamWaveSchedule } from '../../domain/race-event.js';
 import type { RaceEventFetchConfig } from '../../application/race-event-service.js';
 import { parseCsvParticipants } from '../../adapters/csv-participant-parser.js';
+import { setRaceSession, getRaceSession } from '../../lib/race-session-store.js';
+import type { RaceSessionData } from '../../lib/race-session-store.js';
 
 function createServices() {
   const eventPublisher = new EventBridgePublisher();
@@ -42,7 +44,7 @@ export default async function raceEventRoutes(
 ): Promise<void> {
   const services = createServices();
 
-  // In-memory cache for imported event data (per-session, ephemeral)
+  // In-memory cache (warm path) — falls back to DynamoDB across Lambda instances
   const importCache = new Map<
     string,
     { metadata: RaceEventMetadata; participants: RaceParticipant[]; fetchConfig: RaceEventFetchConfig | null }
@@ -50,6 +52,15 @@ export default async function raceEventRoutes(
 
   // Schedule cache keyed by eventId:teamName
   const scheduleCache = new Map<string, TeamWaveSchedule>();
+
+  // Resolve import session: check in-memory first, then DynamoDB
+  async function resolveImport(eventId: string): Promise<RaceSessionData | null> {
+    const cached = importCache.get(eventId);
+    if (cached) return cached;
+    const session = await getRaceSession(eventId);
+    if (session) importCache.set(eventId, session); // warm local cache
+    return session;
+  }
 
   // POST /race-events/import — validate URL and import event data
   fastify.post(
@@ -68,11 +79,13 @@ export default async function raceEventRoutes(
       const { url, eventId } = validate(RaceResultUrlSchema, body.url);
       const result = await services.raceEvent.importEvent(url, eventId);
 
-      importCache.set(eventId, {
+      const session = {
         metadata: result.metadata,
         participants: result.participants,
         fetchConfig: result.fetchConfig,
-      });
+      };
+      importCache.set(eventId, session);
+      await setRaceSession(eventId, session);
 
       return success(reply, {
         eventId,
@@ -127,7 +140,9 @@ export default async function raceEventRoutes(
       };
 
       // fetchConfig is null for CSV imports — no RaceResult re-fetch needed
-      importCache.set(eventId, { metadata, participants, fetchConfig: null });
+      const csvSession = { metadata, participants, fetchConfig: null };
+      importCache.set(eventId, csvSession);
+      await setRaceSession(eventId, csvSession);
 
       return success(reply, {
         eventId,
@@ -147,7 +162,7 @@ export default async function raceEventRoutes(
       request: FastifyRequest<{ Params: { eventId: string } }>,
       reply,
     ) => {
-      const cached = importCache.get(request.params.eventId);
+      const cached = await resolveImport(request.params.eventId);
       if (!cached) {
         throw new ValidationError(
           'Event not imported. Submit the event URL first via POST /race-events/import.',
@@ -178,7 +193,7 @@ export default async function raceEventRoutes(
       }>,
       reply,
     ) => {
-      const cached = importCache.get(request.params.eventId);
+      const cached = await resolveImport(request.params.eventId);
       if (!cached) {
         throw new ValidationError('Event not imported.');
       }
@@ -237,7 +252,7 @@ export default async function raceEventRoutes(
       }>,
       reply,
     ) => {
-      const cached = importCache.get(request.params.eventId);
+      const cached = await resolveImport(request.params.eventId);
       if (!cached) {
         throw new ValidationError('Event not imported.');
       }
