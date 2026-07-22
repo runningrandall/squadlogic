@@ -138,35 +138,37 @@ export class PdfExportService {
     const tableW = cols.reduce((s, w) => s + w, 0);
 
     // Header row — each column gets its own accent color
+    const HDR_H = 28;
     const thY = doc.y;
     let x = L;
     for (let i = 0; i < hdrs.length; i++) {
-      doc.rect(x, thY, cols[i], 24).fill(hdrColors[i]);
+      doc.rect(x, thY, cols[i], HDR_H).fill(hdrColors[i]);
       const txtColor = i < 2 ? '#FFFFFF' : '#000000';
+      const centered = i >= 2;
       doc.fillColor(txtColor).fontSize(9).font('Helvetica-Bold');
-      doc.text(hdrs[i], x + 4, thY + 7, { width: cols[i] - 8, lineBreak: false });
+      doc.text(hdrs[i], x + 4, thY + 9, { width: cols[i] - 8, lineBreak: false, align: centered ? 'center' : 'left' });
       x += cols[i];
     }
-    doc.y = thY + 24;
+    doc.y = thY + HDR_H;
 
-    // Data rows
+    // Data rows — tall enough for two-line category lists
+    const ROW_H = 36;
     let colorIdx = 0;
     for (const wave of schedule.waves) {
       const firstCat = wave.categories[0];
       const logistics = firstCat?.athletes[0]?.logistics;
       const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
       const athleteCount = wave.categories.reduce((s, c) => s + c.athletes.length, 0);
-      const rowH = 22;
       const rowY = doc.y;
       const rowColor = ROW_COLORS[colorIdx % ROW_COLORS.length];
       colorIdx++;
 
-      doc.rect(L, rowY, tableW, rowH).fill(rowColor);
+      doc.rect(L, rowY, tableW, ROW_H).fill(rowColor);
       doc.fillColor('#000000');
 
       const rowVals = [
         wave.waveName,
-        this.truncate(categoryList, cols[1] - 8, 10),
+        categoryList,
         logistics?.waveMeetingTime ?? '—',
         logistics?.warmupStart ?? '—',
         firstCat?.stageTime ?? '—',
@@ -176,11 +178,18 @@ export class PdfExportService {
       x = L;
       for (let i = 0; i < rowVals.length; i++) {
         const bold = i < 2;
+        const centered = i >= 2;
+        // Only the category column (i=1) may wrap; all others are single-line values
+        const allowWrap = i === 1;
         doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
-        doc.text(rowVals[i], x + 4, rowY + 6, { width: cols[i] - 8, lineBreak: false });
+        doc.text(rowVals[i], x + 4, rowY + 9, {
+          width: cols[i] - 8,
+          lineBreak: allowWrap,
+          align: centered ? 'center' : 'left',
+        });
         x += cols[i];
       }
-      doc.y = rowY + rowH;
+      doc.y = rowY + ROW_H;
     }
 
     // Footer
@@ -317,13 +326,6 @@ export class PdfExportService {
     }
 
     return y;
-  }
-
-  // Truncate text so it fits within pixelWidth at the given fontSize (Helvetica avg ~0.55em).
-  private truncate(text: string, pixelWidth: number, fontSize: number): string {
-    const avgCharWidth = fontSize * 0.55;
-    const maxChars = Math.floor(pixelWidth / avgCharWidth);
-    return text.length <= maxChars ? text : text.slice(0, maxChars - 1) + '…';
   }
 
   private async fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
