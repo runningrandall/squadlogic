@@ -10,6 +10,13 @@ export interface LogisticsConfig {
   stagingBeforeMinutes: number;
 }
 
+// Fixed race-day timing constants (business rules, not configurable)
+const WAVE_MEETING_LEAD = 60;   // wave meeting starts this many minutes before the first start
+const MEETING_DURATION  = 10;   // wave meeting lasts 10 minutes → WU start = meeting + 10
+const STAGING_BEFORE    = 20;   // staging opens 20 minutes before race start
+const STAGING_BUFFER    = 5;    // buffer between WU end and staging (5 min transition)
+// WU end = startTime - STAGING_BEFORE - STAGING_BUFFER = startTime - 25
+
 const VARSITY_JVA_PATTERN = /varsity|jv\s*a/i;
 
 export class LogisticsService {
@@ -41,61 +48,45 @@ export class LogisticsService {
     };
   }
 
-  enrichSchedule(
-    schedule: TeamWaveSchedule,
-    config: LogisticsConfig,
-  ): TeamWaveSchedule {
+  // Wave meeting is global (same for every category across all waves):
+  //   waveMeeting  = earliest start in the entire schedule − 60 min
+  //   warmupStart  = waveMeeting + 10 min  (after 10-min team meeting)
+  //   warmupEnd    = categoryStart − 25 min (staging − 5 min buffer)
+  //   stagingTime  = categoryStart − 20 min
+  enrichSchedule(schedule: TeamWaveSchedule): TeamWaveSchedule {
+    const allStartMinutes = schedule.waves
+      .flatMap((wave) => wave.categories.map((cat) => this.parseTime(cat.startTime)))
+      .filter((t) => t > 0);
+    const globalFirstStart = allStartMinutes.length > 0 ? Math.min(...allStartMinutes) : 0;
+    const waveMeetingTime = globalFirstStart > 0 ? this.formatTime(globalFirstStart - WAVE_MEETING_LEAD) : '';
+    const warmupStart     = globalFirstStart > 0 ? this.formatTime(globalFirstStart - WAVE_MEETING_LEAD + MEETING_DURATION) : '';
+
     return {
       ...schedule,
-      waves: schedule.waves.map((wave) => {
-        // Wave meeting = warmup start of the earliest-staging category in this wave.
-        // warmup start = stageTime - warmupDurationMinutes, and is the same event as
-        // "meet here to begin your warmup."
-        const stageMinutesArr = wave.categories
-          .map((cat) => this.parseTime(cat.stageTime))
-          .filter((t) => t > 0);
-        const firstStage = stageMinutesArr.length > 0 ? Math.min(...stageMinutesArr) : 0;
-        const waveMeetingTime = firstStage > 0
-          ? this.formatTime(firstStage - config.warmupDurationMinutes)
-          : '';
-
-        return {
-          ...wave,
-          categories: wave.categories.map((cat) => ({
-            ...cat,
-            athletes: cat.athletes.map((a) => ({
-              ...a,
-              logistics: this.calculateTimeline(
-                cat.startTime,
-                cat.stageTime,
-                waveMeetingTime,
-                config.warmupDurationMinutes,
-              ),
-            })),
+      waves: schedule.waves.map((wave) => ({
+        ...wave,
+        categories: wave.categories.map((cat) => ({
+          ...cat,
+          athletes: cat.athletes.map((a) => ({
+            ...a,
+            logistics: this.calculateTimeline(cat.startTime, waveMeetingTime, warmupStart),
           })),
-        };
-      }),
+        })),
+      })),
     };
   }
 
-  calculateTimeline(
-    startTime: string,
-    stageTime: string,
-    waveMeetingTime: string,
-    warmupDurationMinutes: number,
-  ): AthleteLogistics {
+  calculateTimeline(startTime: string, waveMeetingTime: string, warmupStart: string): AthleteLogistics {
     if (!waveMeetingTime) {
-      return { waveMeetingTime: '', warmupStart: '', warmupEnd: '', stagingTime: stageTime, raceStart: startTime };
+      return { waveMeetingTime: '', warmupStart: '', warmupEnd: '', stagingTime: startTime, raceStart: startTime };
     }
-    const stageMinutes = this.parseTime(stageTime);
-    const warmupStartMinutes = stageMinutes - warmupDurationMinutes;
-
+    const startMinutes = this.parseTime(startTime);
     return {
       waveMeetingTime,
-      warmupStart: this.formatTime(warmupStartMinutes),
-      warmupEnd: stageTime,
-      stagingTime: stageTime,
-      raceStart: startTime,
+      warmupStart,
+      warmupEnd:   this.formatTime(startMinutes - STAGING_BEFORE - STAGING_BUFFER),
+      stagingTime: this.formatTime(startMinutes - STAGING_BEFORE),
+      raceStart:   startTime,
     };
   }
 

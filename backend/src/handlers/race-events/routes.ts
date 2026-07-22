@@ -227,13 +227,7 @@ export default async function raceEventRoutes(
         cached.metadata.eventDate,
       );
 
-      // Calculate logistics with category-aware defaults
-      const logisticsConfig = services.logistics.calculateDefaults(waveConfig, {
-        arrivalOverrides: body.arrivalOverrides,
-        warmupDurationMinutes: body.warmupDurationMinutes,
-        stagingBeforeMinutes: body.stagingBeforeMinutes,
-      });
-      const enriched = services.logistics.enrichSchedule(schedule, logisticsConfig);
+      const enriched = services.logistics.enrichSchedule(schedule);
 
       // Cache for subsequent PDF export
       scheduleCache.set(`${request.params.eventId}:${body.teamName}`, enriched);
@@ -271,8 +265,7 @@ export default async function raceEventRoutes(
           body.teamName, teamParticipants, waveConfig,
           cached.metadata.eventName, cached.metadata.eventDate,
         );
-        const logisticsConfig = services.logistics.calculateDefaults(waveConfig);
-        enriched = services.logistics.enrichSchedule(schedule, logisticsConfig);
+        enriched = services.logistics.enrichSchedule(schedule);
       }
 
       // Get branding (non-fatal — PDF generates without branding on lookup failure)
