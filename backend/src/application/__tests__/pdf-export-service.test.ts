@@ -132,6 +132,22 @@ describe('PdfExportService', () => {
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
   });
 
+  it('sorts categories by start time when categories are out of order', async () => {
+    const unsortedSchedule: TeamWaveSchedule = {
+      ...schedule,
+      waves: [{
+        waveName: 'Wave 1',
+        categories: [
+          { categoryName: 'JV B Boys', stageTime: '08:35', startTime: '08:55', laps: 3, athletes: [{ firstName: 'B', lastName: 'Last', bibNumber: '2' }] },
+          { categoryName: 'JV A Boys', stageTime: '08:10', startTime: '08:30', laps: 3, athletes: [{ firstName: 'A', lastName: 'Last', bibNumber: '1' }] },
+        ],
+      }],
+    };
+    const buffer = await service.generatePdf(unsortedSchedule);
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(buffer.length).toBeGreaterThan(500);
+  });
+
   it('truncates long category lists so summary rows stay on one line', async () => {
     const longCatSchedule: TeamWaveSchedule = {
       ...schedule,

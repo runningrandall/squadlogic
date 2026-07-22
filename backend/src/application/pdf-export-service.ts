@@ -45,6 +45,15 @@ export class PdfExportService {
     const brand = { ...DEFAULT_BRANDING, ...branding };
     const logoBuffer = await this.fetchLogoBuffer(brand.logoUrl);
 
+    // Sort categories within each wave by start time (earliest first) for consistent print order.
+    const sorted: TeamWaveSchedule = {
+      ...schedule,
+      waves: schedule.waves.map((wave) => ({
+        ...wave,
+        categories: [...wave.categories].sort((a, b) => a.startTime.localeCompare(b.startTime)),
+      })),
+    };
+
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: 'LETTER', margins: { top: 0, bottom: 0, left: 0, right: 0 } });
       const chunks: Buffer[] = [];
@@ -53,13 +62,13 @@ export class PdfExportService {
       doc.on('error', reject);
 
       // Page 1: summary
-      this.renderPageHeader(doc, schedule, brand, logoBuffer, eventLocation);
-      this.renderSummary(doc, schedule, brand);
+      this.renderPageHeader(doc, sorted, brand, logoBuffer, eventLocation);
+      this.renderSummary(doc, sorted, brand);
 
       // Subsequent pages: one per wave
-      for (const wave of schedule.waves) {
+      for (const wave of sorted.waves) {
         doc.addPage();
-        this.renderPageHeader(doc, schedule, brand, logoBuffer, eventLocation);
+        this.renderPageHeader(doc, sorted, brand, logoBuffer, eventLocation);
         this.renderWave(doc, wave, brand);
       }
 
