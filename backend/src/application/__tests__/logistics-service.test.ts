@@ -166,18 +166,17 @@ describe('LogisticsService', () => {
       expect(boys?.waveMeetingTime).toBe(girls?.waveMeetingTime);
     });
 
-    it('falls back to 60-minute wave meeting when wave is not in arrivalOverrides', () => {
-      // Build a config with an explicit map that does NOT contain our wave
+    it('wave meeting = earliest stageTime - warmupDuration', () => {
       const sparseConfig = {
-        arrivalOverrides: new Map<string, number>(), // empty — no overrides
+        arrivalOverrides: new Map<string, number>(),
         warmupDurationMinutes: 30,
         stagingBeforeMinutes: 20,
       };
 
       const enriched = service.enrichSchedule(schedule, sparseConfig);
-      // Wave meeting = min startTime in wave (10:10 = 610 min) minus 60 = 550 min = 09:10
+      // min stageTime = 09:50 (Varsity Boys); 09:50 - 30 = 09:20
       const waveMeetingTime = enriched.waves[0].categories[0].athletes[0].logistics?.waveMeetingTime;
-      expect(waveMeetingTime).toBe('09:10');
+      expect(waveMeetingTime).toBe('09:20');
     });
   });
 });

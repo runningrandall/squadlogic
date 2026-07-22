@@ -132,6 +132,23 @@ describe('PdfExportService', () => {
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
   });
 
+  it('truncates long category lists so summary rows stay on one line', async () => {
+    const longCatSchedule: TeamWaveSchedule = {
+      ...schedule,
+      totalAthletes: 3,
+      waves: [{
+        waveName: 'Wave 1',
+        categories: [
+          { categoryName: 'Freshman C Boys', stageTime: '09:50', startTime: '10:10', laps: 2, athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1' }] },
+          { categoryName: 'JV D Girls',      stageTime: '09:50', startTime: '10:10', laps: 2, athletes: [{ firstName: 'C', lastName: 'D', bibNumber: '2' }] },
+          { categoryName: 'JV E Boys',       stageTime: '09:50', startTime: '10:10', laps: 2, athletes: [{ firstName: 'E', lastName: 'F', bibNumber: '3' }] },
+        ],
+      }],
+    };
+    const buffer = await service.generatePdf(longCatSchedule);
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
   it('renders alternating row backgrounds for even-indexed rows', async () => {
     const multiAthleteSchedule: TeamWaveSchedule = {
       ...schedule,

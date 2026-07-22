@@ -48,13 +48,16 @@ export class LogisticsService {
     return {
       ...schedule,
       waves: schedule.waves.map((wave) => {
-        // Wave meeting = 60 min before the earliest race start in this wave,
-        // and is the same for every category within the wave.
-        const startMinutes = wave.categories
-          .map((cat) => this.parseTime(cat.startTime))
+        // Wave meeting = warmup start of the earliest-staging category in this wave.
+        // warmup start = stageTime - warmupDurationMinutes, and is the same event as
+        // "meet here to begin your warmup."
+        const stageMinutesArr = wave.categories
+          .map((cat) => this.parseTime(cat.stageTime))
           .filter((t) => t > 0);
-        const firstStart = startMinutes.length > 0 ? Math.min(...startMinutes) : 0;
-        const waveMeetingTime = firstStart > 0 ? this.formatTime(firstStart - 60) : '';
+        const firstStage = stageMinutesArr.length > 0 ? Math.min(...stageMinutesArr) : 0;
+        const waveMeetingTime = firstStage > 0
+          ? this.formatTime(firstStage - config.warmupDurationMinutes)
+          : '';
 
         return {
           ...wave,

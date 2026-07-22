@@ -157,7 +157,7 @@ export class PdfExportService {
 
       const rowVals = [
         wave.waveName,
-        categoryList,
+        this.truncate(categoryList, cols[1] - 8, 10),
         logistics?.waveMeetingTime ?? '—',
         logistics?.warmupStart ?? '—',
         firstCat?.stageTime ?? '—',
@@ -233,28 +233,35 @@ export class PdfExportService {
     }
     doc.y = valY + 26;
 
-    // Categories in pairs — left column x=L, right column x=R
+    // Two independent columns: even-indexed categories on left, odd on right.
+    // Each column flows downward on its own — no height coupling between neighbours.
     const COL_W = 260; // name (196) + bib (56) + 8px padding
     const COL_GAP = 20;
     const R = L + COL_W + COL_GAP;
 
-    for (let i = 0; i < wave.categories.length; i += 2) {
-      const leftCat = wave.categories[i];
-      const rightCat = wave.categories[i + 1];
+    const leftCats = wave.categories.filter((_, i) => i % 2 === 0);
+    const rightCats = wave.categories.filter((_, i) => i % 2 === 1);
 
-      if (doc.y > PH - 80) {
-        doc.addPage();
-        doc.y = HEADER_H + 10;
-      }
-
-      const pairStartY = doc.y;
-      const leftEndY = this.renderCategoryBlock(doc, leftCat, L, pairStartY, COL_W, brand);
-      const rightEndY = rightCat
-        ? this.renderCategoryBlock(doc, rightCat, R, pairStartY, COL_W, brand)
-        : pairStartY;
-
-      doc.y = Math.max(leftEndY, rightEndY) + 8;
+    if (doc.y > PH - 80) {
+      doc.addPage();
+      doc.y = HEADER_H + 10;
     }
+
+    const colStartY = doc.y;
+    let leftY = colStartY;
+    let rightY = colStartY;
+
+    for (const cat of leftCats) {
+      leftY = this.renderCategoryBlock(doc, cat, L, leftY, COL_W, brand);
+      leftY += 8;
+    }
+
+    for (const cat of rightCats) {
+      rightY = this.renderCategoryBlock(doc, cat, R, rightY, COL_W, brand);
+      rightY += 8;
+    }
+
+    doc.y = Math.max(leftY, rightY);
   }
 
   // ─── Single category block rendered at absolute position (returns end y) ──
@@ -301,6 +308,13 @@ export class PdfExportService {
     }
 
     return y;
+  }
+
+  // Truncate text so it fits within pixelWidth at the given fontSize (Helvetica avg ~0.55em).
+  private truncate(text: string, pixelWidth: number, fontSize: number): string {
+    const avgCharWidth = fontSize * 0.55;
+    const maxChars = Math.floor(pixelWidth / avgCharWidth);
+    return text.length <= maxChars ? text : text.slice(0, maxChars - 1) + '…';
   }
 
   private async fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
