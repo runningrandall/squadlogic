@@ -1,4 +1,4 @@
-import type { TeamWaveSchedule, WaveGroup } from '../domain/race-event.js';
+import type { TeamWaveSchedule, WaveGroup, WaveScheduleEntry } from '../domain/race-event.js';
 
 export interface PdfBranding {
   teamDisplayName: string;
@@ -132,23 +132,22 @@ export class PdfExportService {
     const thY = doc.y;
     let x = L;
     for (let i = 0; i < hdrs.length; i++) {
-      doc.rect(x, thY, cols[i], 20).fill(hdrColors[i]);
+      doc.rect(x, thY, cols[i], 24).fill(hdrColors[i]);
       const txtColor = i < 2 ? '#FFFFFF' : '#000000';
-      doc.fillColor(txtColor).fontSize(7).font('Helvetica-Bold');
-      doc.text(hdrs[i], x + 4, thY + 6, { width: cols[i] - 8, lineBreak: false });
+      doc.fillColor(txtColor).fontSize(9).font('Helvetica-Bold');
+      doc.text(hdrs[i], x + 4, thY + 7, { width: cols[i] - 8, lineBreak: false });
       x += cols[i];
     }
-    doc.y = thY + 20;
+    doc.y = thY + 24;
 
     // Data rows
-    doc.fontSize(8).font('Helvetica');
     let colorIdx = 0;
     for (const wave of schedule.waves) {
       const firstCat = wave.categories[0];
       const logistics = firstCat?.athletes[0]?.logistics;
       const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
       const athleteCount = wave.categories.reduce((s, c) => s + c.athletes.length, 0);
-      const rowH = 18;
+      const rowH = 22;
       const rowY = doc.y;
       const rowColor = ROW_COLORS[colorIdx % ROW_COLORS.length];
       colorIdx++;
@@ -168,8 +167,8 @@ export class PdfExportService {
       x = L;
       for (let i = 0; i < rowVals.length; i++) {
         const bold = i < 2;
-        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
-        doc.text(rowVals[i], x + 4, rowY + 5, { width: cols[i] - 8, lineBreak: false });
+        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
+        doc.text(rowVals[i], x + 4, rowY + 6, { width: cols[i] - 8, lineBreak: false });
         x += cols[i];
       }
       doc.y = rowY + rowH;
@@ -234,71 +233,74 @@ export class PdfExportService {
     }
     doc.y = valY + 26;
 
-    // Two-column athlete layout
-    const COL_W = 260;  // name (200) + bib (60) per column
+    // Categories in pairs — left column x=L, right column x=R
+    const COL_W = 260; // name (196) + bib (56) + 8px padding
     const COL_GAP = 20;
-    const NAME_W = 200;
-    const BIB_W = 60;
-    const R = L + COL_W + COL_GAP; // right column x start
+    const R = L + COL_W + COL_GAP;
 
-    for (const cat of wave.categories) {
+    for (let i = 0; i < wave.categories.length; i += 2) {
+      const leftCat = wave.categories[i];
+      const rightCat = wave.categories[i + 1];
+
       if (doc.y > PH - 80) {
         doc.addPage();
         doc.y = HEADER_H + 10;
       }
 
-      // Category header: stage first, then race start, plus athlete count
-      const catY = doc.y;
-      doc.rect(L, catY, tableW, 24).fill(brand.tertiaryColor);
-      doc.fillColor('#222222').fontSize(11).font('Helvetica-Bold');
-      const catLabel = `${cat.categoryName}   Stage: ${cat.stageTime}   Race: ${cat.startTime}   ${cat.laps ?? '—'} laps   •   ${cat.athletes.length} athletes`;
-      doc.text(catLabel, L + 8, catY + 7, { width: tableW - 16, lineBreak: false });
-      doc.y = catY + 24;
+      const pairStartY = doc.y;
+      const leftEndY = this.renderCategoryBlock(doc, leftCat, L, pairStartY, COL_W, brand);
+      const rightEndY = rightCat
+        ? this.renderCategoryBlock(doc, rightCat, R, pairStartY, COL_W, brand)
+        : pairStartY;
 
-      // Column headers — two sets side by side
-      const colHdrY = doc.y;
-      for (const cx of [L, R]) {
-        doc.rect(cx, colHdrY, COL_W, 14).fill('#E0E0E0');
-        doc.fillColor('#555555').fontSize(7).font('Helvetica-Bold');
-        doc.text('ATHLETE', cx + 4, colHdrY + 4, { width: NAME_W - 8, lineBreak: false });
-        doc.text('BIB', cx + NAME_W + 4, colHdrY + 4, { width: BIB_W - 8, lineBreak: false });
-      }
-      doc.y = colHdrY + 14;
-
-      // Split athletes into two halves
-      const half = Math.ceil(cat.athletes.length / 2);
-      const leftCol = cat.athletes.slice(0, half);
-      const rightCol = cat.athletes.slice(half);
-      const rows = half; // left column always has >= right
-
-      for (let r = 0; r < rows; r++) {
-        if (doc.y > PH - 40) {
-          doc.addPage();
-          doc.y = HEADER_H + 10;
-        }
-        const rowY = doc.y;
-
-        if (r % 2 === 1) {
-          doc.rect(L, rowY, COL_W, 13).fill('#F5F5F5');
-          doc.rect(R, rowY, COL_W, 13).fill('#F5F5F5');
-        }
-
-        doc.fillColor('#000000').fontSize(8).font('Helvetica');
-
-        const la = leftCol[r];
-        doc.text(`${la.lastName}, ${la.firstName}`, L + 4, rowY + 2, { width: NAME_W - 8, lineBreak: false });
-        doc.text(la.bibNumber, L + NAME_W + 4, rowY + 2, { width: BIB_W - 8, lineBreak: false });
-
-        const ra = rightCol[r];
-        if (ra) {
-          doc.text(`${ra.lastName}, ${ra.firstName}`, R + 4, rowY + 2, { width: NAME_W - 8, lineBreak: false });
-          doc.text(ra.bibNumber, R + NAME_W + 4, rowY + 2, { width: BIB_W - 8, lineBreak: false });
-        }
-
-        doc.y = rowY + 13;
-      }
-      doc.y += 8;
+      doc.y = Math.max(leftEndY, rightEndY) + 8;
     }
+  }
+
+  // ─── Single category block rendered at absolute position (returns end y) ──
+  private renderCategoryBlock(
+    doc: PDFKit.PDFDocument,
+    cat: WaveScheduleEntry,
+    cx: number,
+    startY: number,
+    colW: number,
+    brand: PdfBranding,
+  ): number {
+    const nameW = 196;
+    const bibW = 56;
+    let y = startY;
+
+    // Two-line category header
+    doc.rect(cx, y, colW, 32).fill(brand.tertiaryColor);
+    doc.fillColor('#222222').fontSize(11).font('Helvetica-Bold');
+    doc.text(`${cat.categoryName}  (${cat.athletes.length})`, cx + 8, y + 5, { width: colW - 16, lineBreak: false });
+    doc.fillColor('#444444').fontSize(8).font('Helvetica');
+    doc.text(
+      `Stage: ${cat.stageTime}   Race: ${cat.startTime}   ${cat.laps ?? '—'} laps`,
+      cx + 8, y + 20, { width: colW - 16, lineBreak: false },
+    );
+    y += 32;
+
+    // Column headers
+    doc.rect(cx, y, colW, 14).fill('#E0E0E0');
+    doc.fillColor('#555555').fontSize(7).font('Helvetica-Bold');
+    doc.text('ATHLETE', cx + 4, y + 4, { width: nameW - 4, lineBreak: false });
+    doc.text('BIB', cx + nameW + 8, y + 4, { width: bibW - 4, lineBreak: false });
+    y += 14;
+
+    // Athlete rows
+    for (let r = 0; r < cat.athletes.length; r++) {
+      if (r % 2 === 1) {
+        doc.rect(cx, y, colW, 13).fill('#F5F5F5');
+      }
+      doc.fillColor('#000000').fontSize(8).font('Helvetica');
+      const a = cat.athletes[r];
+      doc.text(`${a.lastName}, ${a.firstName}`, cx + 4, y + 2, { width: nameW - 4, lineBreak: false });
+      doc.text(a.bibNumber, cx + nameW + 8, y + 2, { width: bibW - 4, lineBreak: false });
+      y += 13;
+    }
+
+    return y;
   }
 
   private async fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
