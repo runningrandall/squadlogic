@@ -157,9 +157,9 @@ describe('LogisticsService', () => {
       expect(boys?.warmupStart).toBe(girls?.warmupStart);
     });
 
-    it('wave meeting = global earliest startTime - 60 min', () => {
+    it('wave meeting = earliest startTime in that wave - 60 min', () => {
       const enriched = service.enrichSchedule(schedule);
-      // Global earliest start = 10:10 (min of 10:10 and 10:15); meeting = 10:10 - 60 = 09:10
+      // Earliest start in wave = 10:10; meeting = 10:10 - 60 = 09:10
       const waveMeetingTime = enriched.waves[0].categories[0].athletes[0].logistics?.waveMeetingTime;
       expect(waveMeetingTime).toBe('09:10');
     });
@@ -169,6 +169,21 @@ describe('LogisticsService', () => {
       // wave meeting = 09:10; WU start = 09:10 + 10 = 09:20
       const warmupStart = enriched.waves[0].categories[0].athletes[0].logistics?.warmupStart;
       expect(warmupStart).toBe('09:20');
+    });
+
+    it('different waves get different wave meeting times based on their own start times', () => {
+      const multiWaveSchedule: TeamWaveSchedule = {
+        ...schedule,
+        waves: [
+          { waveName: 'Wave 1', categories: [{ categoryName: 'JV B Boys', stageTime: '07:40', startTime: '08:00', laps: 2, athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1' }] }] },
+          { waveName: 'Wave 2', categories: [{ categoryName: 'Varsity Boys', stageTime: '09:50', startTime: '10:10', laps: 4, athletes: [{ firstName: 'C', lastName: 'D', bibNumber: '2' }] }] },
+        ],
+      };
+      const enriched = service.enrichSchedule(multiWaveSchedule);
+      const wave1Meeting = enriched.waves[0].categories[0].athletes[0].logistics?.waveMeetingTime;
+      const wave2Meeting = enriched.waves[1].categories[0].athletes[0].logistics?.waveMeetingTime;
+      expect(wave1Meeting).toBe('07:00'); // 08:00 - 60
+      expect(wave2Meeting).toBe('09:10'); // 10:10 - 60
     });
   });
 });

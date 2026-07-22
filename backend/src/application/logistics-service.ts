@@ -48,31 +48,34 @@ export class LogisticsService {
     };
   }
 
-  // Wave meeting is global (same for every category across all waves):
-  //   waveMeeting  = earliest start in the entire schedule − 60 min
+  // Per-wave timing (same for every category within a wave):
+  //   waveMeeting  = earliest start in that wave − 60 min
   //   warmupStart  = waveMeeting + 10 min  (after 10-min team meeting)
+  // Per-category timing:
   //   warmupEnd    = categoryStart − 25 min (staging − 5 min buffer)
   //   stagingTime  = categoryStart − 20 min
   enrichSchedule(schedule: TeamWaveSchedule): TeamWaveSchedule {
-    const allStartMinutes = schedule.waves
-      .flatMap((wave) => wave.categories.map((cat) => this.parseTime(cat.startTime)))
-      .filter((t) => t > 0);
-    const globalFirstStart = allStartMinutes.length > 0 ? Math.min(...allStartMinutes) : 0;
-    const waveMeetingTime = globalFirstStart > 0 ? this.formatTime(globalFirstStart - WAVE_MEETING_LEAD) : '';
-    const warmupStart     = globalFirstStart > 0 ? this.formatTime(globalFirstStart - WAVE_MEETING_LEAD + MEETING_DURATION) : '';
-
     return {
       ...schedule,
-      waves: schedule.waves.map((wave) => ({
-        ...wave,
-        categories: wave.categories.map((cat) => ({
-          ...cat,
-          athletes: cat.athletes.map((a) => ({
-            ...a,
-            logistics: this.calculateTimeline(cat.startTime, waveMeetingTime, warmupStart),
+      waves: schedule.waves.map((wave) => {
+        const waveStartMinutes = wave.categories
+          .map((cat) => this.parseTime(cat.startTime))
+          .filter((t) => t > 0);
+        const firstStart = waveStartMinutes.length > 0 ? Math.min(...waveStartMinutes) : 0;
+        const waveMeetingTime = firstStart > 0 ? this.formatTime(firstStart - WAVE_MEETING_LEAD) : '';
+        const warmupStart     = firstStart > 0 ? this.formatTime(firstStart - WAVE_MEETING_LEAD + MEETING_DURATION) : '';
+
+        return {
+          ...wave,
+          categories: wave.categories.map((cat) => ({
+            ...cat,
+            athletes: cat.athletes.map((a) => ({
+              ...a,
+              logistics: this.calculateTimeline(cat.startTime, waveMeetingTime, warmupStart),
+            })),
           })),
-        })),
-      })),
+        };
+      }),
     };
   }
 
