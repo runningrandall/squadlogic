@@ -191,15 +191,15 @@ export class PdfExportService {
 
     // Wave name banner
     const waveY = doc.y;
-    doc.rect(L, waveY, tableW, 26).fill(brand.primaryColor);
-    doc.fillColor('#FFFFFF').fontSize(13).font('Helvetica-Bold');
-    doc.text(wave.waveName, L + 8, waveY + 7, { width: tableW - 16, lineBreak: false });
-    doc.y = waveY + 26;
+    doc.rect(L, waveY, tableW, 32).fill(brand.primaryColor);
+    doc.fillColor('#FFFFFF').fontSize(17).font('Helvetica-Bold');
+    doc.text(wave.waveName, L + 10, waveY + 8, { width: tableW - 20, lineBreak: false });
+    doc.y = waveY + 32;
 
     // Timing block: label row + value row spanning full width
     const timeCols = [CW / 5, CW / 5, CW / 5, CW / 5, CW / 5];
     const timeLabels = ['WAVE MEETING', 'WU START', 'WU END', 'STAGE', 'RACE START'];
-    const timeColBg  = [
+    const timeColBg = [
       TIME_COL_COLORS.waveMtg, TIME_COL_COLORS.warmUp,
       TIME_COL_COLORS.warmUp,  TIME_COL_COLORS.stage,
       TIME_COL_COLORS.race,
@@ -216,27 +216,30 @@ export class PdfExportService {
     const lblY = doc.y;
     let x = L;
     for (let i = 0; i < timeLabels.length; i++) {
-      doc.rect(x, lblY, timeCols[i], 14).fill(timeColBg[i]);
-      doc.fillColor('#000000').fontSize(6).font('Helvetica-Bold');
+      doc.rect(x, lblY, timeCols[i], 15).fill(timeColBg[i]);
+      doc.fillColor('#000000').fontSize(7).font('Helvetica-Bold');
       doc.text(timeLabels[i], x + 4, lblY + 4, { width: timeCols[i] - 8, lineBreak: false });
       x += timeCols[i];
     }
-    doc.y = lblY + 14;
+    doc.y = lblY + 15;
 
     // Value row
     const valY = doc.y;
     x = L;
     for (let i = 0; i < timeVals.length; i++) {
-      doc.rect(x, valY, timeCols[i], 18).fill(i % 2 === 0 ? '#FFFFFF' : brand.tertiaryColor);
-      doc.fillColor('#000000').fontSize(11).font('Helvetica-Bold');
-      doc.text(timeVals[i], x + 4, valY + 3, { width: timeCols[i] - 8, lineBreak: false });
+      doc.rect(x, valY, timeCols[i], 22).fill(i % 2 === 0 ? '#FFFFFF' : brand.tertiaryColor);
+      doc.fillColor('#000000').fontSize(13).font('Helvetica-Bold');
+      doc.text(timeVals[i], x + 4, valY + 4, { width: timeCols[i] - 8, lineBreak: false });
       x += timeCols[i];
     }
-    doc.y = valY + 22;
+    doc.y = valY + 26;
 
-    // Athlete table: Name + Bib only
-    const nameCW = 300;
-    const bibCW  = 80;
+    // Two-column athlete layout
+    const COL_W = 260;  // name (200) + bib (60) per column
+    const COL_GAP = 20;
+    const NAME_W = 200;
+    const BIB_W = 60;
+    const R = L + COL_W + COL_GAP; // right column x start
 
     for (const cat of wave.categories) {
       if (doc.y > PH - 80) {
@@ -244,40 +247,57 @@ export class PdfExportService {
         doc.y = HEADER_H + 10;
       }
 
-      // Category header: stage time first, then race start
+      // Category header: stage first, then race start, plus athlete count
       const catY = doc.y;
-      doc.rect(L, catY, tableW, 18).fill(brand.tertiaryColor);
-      doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
-      const catLabel = `${cat.categoryName}   Stage: ${cat.stageTime}   Race: ${cat.startTime}   ${cat.laps ?? '—'} laps`;
-      doc.text(catLabel, L + 6, catY + 5, { width: tableW - 12, lineBreak: false });
-      doc.y = catY + 18;
+      doc.rect(L, catY, tableW, 24).fill(brand.tertiaryColor);
+      doc.fillColor('#222222').fontSize(11).font('Helvetica-Bold');
+      const catLabel = `${cat.categoryName}   Stage: ${cat.stageTime}   Race: ${cat.startTime}   ${cat.laps ?? '—'} laps   •   ${cat.athletes.length} athletes`;
+      doc.text(catLabel, L + 8, catY + 7, { width: tableW - 16, lineBreak: false });
+      doc.y = catY + 24;
 
-      // Column headers
+      // Column headers — two sets side by side
       const colHdrY = doc.y;
-      doc.rect(L, colHdrY, nameCW + bibCW, 13).fill('#E0E0E0');
-      doc.fillColor('#555555').fontSize(7).font('Helvetica-Bold');
-      doc.text('ATHLETE', L + 4, colHdrY + 3, { width: nameCW - 8, lineBreak: false });
-      doc.text('BIB', L + nameCW + 4, colHdrY + 3, { width: bibCW - 8, lineBreak: false });
-      doc.y = colHdrY + 13;
+      for (const cx of [L, R]) {
+        doc.rect(cx, colHdrY, COL_W, 14).fill('#E0E0E0');
+        doc.fillColor('#555555').fontSize(7).font('Helvetica-Bold');
+        doc.text('ATHLETE', cx + 4, colHdrY + 4, { width: NAME_W - 8, lineBreak: false });
+        doc.text('BIB', cx + NAME_W + 4, colHdrY + 4, { width: BIB_W - 8, lineBreak: false });
+      }
+      doc.y = colHdrY + 14;
 
-      // Athlete rows
-      let rowIdx = 0;
-      for (const athlete of cat.athletes) {
+      // Split athletes into two halves
+      const half = Math.ceil(cat.athletes.length / 2);
+      const leftCol = cat.athletes.slice(0, half);
+      const rightCol = cat.athletes.slice(half);
+      const rows = half; // left column always has >= right
+
+      for (let r = 0; r < rows; r++) {
         if (doc.y > PH - 40) {
           doc.addPage();
           doc.y = HEADER_H + 10;
         }
         const rowY = doc.y;
-        if (rowIdx % 2 === 1) {
-          doc.rect(L, rowY, nameCW + bibCW, 13).fill('#F5F5F5');
+
+        if (r % 2 === 1) {
+          doc.rect(L, rowY, COL_W, 13).fill('#F5F5F5');
+          doc.rect(R, rowY, COL_W, 13).fill('#F5F5F5');
         }
+
         doc.fillColor('#000000').fontSize(8).font('Helvetica');
-        doc.text(`${athlete.lastName}, ${athlete.firstName}`, L + 4, rowY + 2, { width: nameCW - 8, lineBreak: false });
-        doc.text(athlete.bibNumber, L + nameCW + 4, rowY + 2, { width: bibCW - 8, lineBreak: false });
+
+        const la = leftCol[r];
+        doc.text(`${la.lastName}, ${la.firstName}`, L + 4, rowY + 2, { width: NAME_W - 8, lineBreak: false });
+        doc.text(la.bibNumber, L + NAME_W + 4, rowY + 2, { width: BIB_W - 8, lineBreak: false });
+
+        const ra = rightCol[r];
+        if (ra) {
+          doc.text(`${ra.lastName}, ${ra.firstName}`, R + 4, rowY + 2, { width: NAME_W - 8, lineBreak: false });
+          doc.text(ra.bibNumber, R + NAME_W + 4, rowY + 2, { width: BIB_W - 8, lineBreak: false });
+        }
+
         doc.y = rowY + 13;
-        rowIdx++;
       }
-      doc.y += 6;
+      doc.y += 8;
     }
   }
 
