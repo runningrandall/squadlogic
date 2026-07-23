@@ -171,7 +171,7 @@ export class PdfExportService {
         categoryList,
         logistics?.waveMeetingTime ?? '—',
         logistics?.warmupStart ?? '—',
-        firstCat?.stageTime ?? '—',
+        firstCat?.athletes[0]?.logistics?.stagingTime ?? '—',
         firstCat?.startTime ?? '—',
         String(athleteCount),
       ];
@@ -225,7 +225,7 @@ export class PdfExportService {
       logistics?.waveMeetingTime ?? '—',
       logistics?.warmupStart ?? '—',
       logistics?.warmupEnd ?? '—',
-      firstCat?.stageTime ?? '—',
+      firstCat?.athletes[0]?.logistics?.stagingTime ?? '—',
       firstCat?.startTime ?? '—',
     ];
 
@@ -301,7 +301,7 @@ export class PdfExportService {
     doc.text(`${cat.categoryName}  (${cat.athletes.length})`, cx + 8, y + 5, { width: colW - 16, lineBreak: false });
     doc.fillColor('#444444').fontSize(8).font('Helvetica');
     doc.text(
-      `Stage: ${cat.stageTime}   Race: ${cat.startTime}   ${cat.laps ?? '—'} laps`,
+      `Stage: ${cat.athletes[0]?.logistics?.stagingTime ?? '—'}   Race: ${cat.startTime}   ${cat.laps ?? '—'} laps`,
       cx + 8, y + 20, { width: colW - 16, lineBreak: false },
     );
     y += 32;
