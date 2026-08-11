@@ -27,23 +27,38 @@ vi.mock('@/lib/api', () => ({
   api: mockApi,
 }));
 
+function getFileInput(container: HTMLElement): HTMLInputElement {
+  return container.querySelector('input[type="file"]') as HTMLInputElement;
+}
+
+async function chooseFile(container: HTMLElement) {
+  const file = new File(['fake xlsx content'], 'callup.xlsx', {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const input = getFileInput(container);
+  fireEvent.change(input, { target: { files: [file] } });
+  // FileReader.onload resolves asynchronously
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: /^Import$/ })).not.toBeDisabled();
+  });
+}
+
 describe('RaceDayPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders the URL input step by default', () => {
+  it('renders the upload step by default', () => {
     render(<RaceDayPage />);
     expect(screen.getByText('Race Day Schedule')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'RaceResult URL' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Upload CSV' })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('https://my.raceresult.com/411620/')).toBeInTheDocument();
+    expect(screen.getByText('Choose file')).toBeInTheDocument();
+    expect(screen.getByText('No file selected')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Import$/ })).toBeInTheDocument();
   });
 
   it('shows step indicator with 3 steps', () => {
     render(<RaceDayPage />);
-    expect(screen.getAllByText('Import').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Upload')).toBeInTheDocument();
     expect(screen.getByText('Select Team')).toBeInTheDocument();
     expect(screen.getByText('Schedule')).toBeInTheDocument();
   });
@@ -55,23 +70,20 @@ describe('RaceDayPage', () => {
     expect(link.closest('a')).toHaveAttribute('href', '/race-day/branding');
   });
 
-  it('disables Import button when URL is empty', () => {
+  it('disables Import button when no file is chosen', () => {
     render(<RaceDayPage />);
     const importBtn = screen.getByRole('button', { name: /^Import$/ });
     expect(importBtn).toBeDisabled();
   });
 
-  it('enables Import button when URL is entered', () => {
-    render(<RaceDayPage />);
-    const input = screen.getByPlaceholderText('https://my.raceresult.com/411620/');
-    fireEvent.change(input, { target: { value: 'https://my.raceresult.com/411620/' } });
-    const importBtn = screen.getByRole('button', { name: /^Import$/ });
-    expect(importBtn).not.toBeDisabled();
+  it('enables Import button once a file is chosen', async () => {
+    const { container } = render(<RaceDayPage />);
+    await chooseFile(container);
   });
 
   it('shows team selection step after successful import', async () => {
     mockApi.post.mockResolvedValueOnce({
-      eventId: '411620',
+      eventId: 'evt-1',
       eventName: 'UTAH HS MTB 2026',
       eventDate: '2026-08-02',
       eventLocation: 'American Fork, UT',
@@ -85,11 +97,9 @@ describe('RaceDayPage', () => {
       ],
     });
 
-    render(<RaceDayPage />);
-
-    const input = screen.getByPlaceholderText('https://my.raceresult.com/411620/');
-    fireEvent.change(input, { target: { value: 'https://my.raceresult.com/411620/' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    const { container } = render(<RaceDayPage />);
+    await chooseFile(container);
+    fireEvent.click(screen.getByRole('button', { name: /^Import$/ }));
 
     await waitFor(() => {
       expect(screen.getByText('Select Your Team')).toBeInTheDocument();
@@ -97,26 +107,28 @@ describe('RaceDayPage', () => {
 
     expect(screen.getByText('UTAH HS MTB 2026')).toBeInTheDocument();
     expect(screen.getByText('Choose a team...')).toBeInTheDocument();
+    expect(mockApi.post).toHaveBeenCalledWith(
+      '/race-events/import/callup',
+      expect.objectContaining({ fileData: expect.any(String) }),
+    );
   });
 
   it('shows error message on import failure', async () => {
     mockApi.post.mockRejectedValueOnce(new Error('Network error'));
 
-    render(<RaceDayPage />);
-
-    const input = screen.getByPlaceholderText('https://my.raceresult.com/411620/');
-    fireEvent.change(input, { target: { value: 'https://my.raceresult.com/411620/' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    const { container } = render(<RaceDayPage />);
+    await chooseFile(container);
+    fireEvent.click(screen.getByRole('button', { name: /^Import$/ }));
 
     await waitFor(() => {
       expect(screen.getByText('Network error')).toBeInTheDocument();
     });
   });
 
-  it('shows schedule view after team selection', async () => {
+  it('shows schedule view with staging number column after team selection', async () => {
     // Import
     mockApi.post.mockResolvedValueOnce({
-      eventId: '411620',
+      eventId: 'evt-2',
       eventName: 'UTAH HS MTB 2026',
       eventDate: '2026-08-02',
       eventLocation: 'American Fork, UT',
@@ -127,12 +139,9 @@ describe('RaceDayPage', () => {
       teams: [{ name: 'Brighton', count: 10 }],
     });
 
-    render(<RaceDayPage />);
-
-    fireEvent.change(screen.getByPlaceholderText('https://my.raceresult.com/411620/'), {
-      target: { value: 'https://my.raceresult.com/411620/' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    const { container } = render(<RaceDayPage />);
+    await chooseFile(container);
+    fireEvent.click(screen.getByRole('button', { name: /^Import$/ }));
 
     await waitFor(() => {
       expect(screen.getByText('Select Your Team')).toBeInTheDocument();
@@ -143,7 +152,7 @@ describe('RaceDayPage', () => {
       teamName: 'Brighton',
       eventName: 'UTAH HS MTB 2026',
       eventDate: '2026-08-02',
-      totalAthletes: 3,
+      totalAthletes: 1,
       waves: [
         {
           waveName: 'Wave 1 - HS',
@@ -158,8 +167,9 @@ describe('RaceDayPage', () => {
                   firstName: 'John',
                   lastName: 'Adams',
                   bibNumber: '101',
+                  callUpNumber: '5',
                   logistics: {
-                    arrivalTime: '07:00',
+                    waveMeetingTime: '07:00',
                     warmupStart: '07:00',
                     warmupEnd: '07:30',
                     stagingTime: '07:40',
@@ -183,13 +193,16 @@ describe('RaceDayPage', () => {
       expect(screen.getByText('Adams, John')).toBeInTheDocument();
     });
 
+    expect(screen.getByText('Staging #')).toBeInTheDocument();
+    expect(screen.getByText('5')).toBeInTheDocument(); // callUpNumber
+    expect(screen.getByText('101')).toBeInTheDocument(); // bibNumber
     expect(screen.getByText('Export PDF')).toBeInTheDocument();
     expect(screen.getByText('Export Sheets')).toBeInTheDocument();
   });
 
-  it('resets to URL step when Start Over is clicked', async () => {
+  it('resets to upload step when Start Over is clicked', async () => {
     mockApi.post.mockResolvedValueOnce({
-      eventId: '411620',
+      eventId: 'evt-3',
       eventName: 'Test',
       eventDate: '2026-08-02',
       eventLocation: 'Test, UT',
@@ -198,18 +211,16 @@ describe('RaceDayPage', () => {
     });
     mockApi.get.mockResolvedValueOnce({ teams: [{ name: 'A', count: 1 }] });
 
-    render(<RaceDayPage />);
-
-    fireEvent.change(screen.getByPlaceholderText('https://my.raceresult.com/411620/'), {
-      target: { value: 'https://my.raceresult.com/411620/' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    const { container } = render(<RaceDayPage />);
+    await chooseFile(container);
+    fireEvent.click(screen.getByRole('button', { name: /^Import$/ }));
 
     await waitFor(() => {
       expect(screen.getByText('Start Over')).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText('Start Over'));
-    expect(screen.getByRole('button', { name: 'RaceResult URL' })).toBeInTheDocument();
+    expect(screen.getByText('No file selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Import$/ })).toBeDisabled();
   });
 });
