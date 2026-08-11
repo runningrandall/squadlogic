@@ -123,8 +123,8 @@ describe('LogisticsService', () => {
               startTime: '10:10',
               laps: 4,
               athletes: [
-                { firstName: 'Dave', lastName: 'Adams', bibNumber: '201' },
-                { firstName: 'Mike', lastName: 'Clark', bibNumber: '202' },
+                { firstName: 'Dave', lastName: 'Adams', bibNumber: '201', callUpNumber: '1' },
+                { firstName: 'Mike', lastName: 'Clark', bibNumber: '202', callUpNumber: '1' },
               ],
             },
             {
@@ -133,7 +133,7 @@ describe('LogisticsService', () => {
               startTime: '10:15',
               laps: 3,
               athletes: [
-                { firstName: 'Sara', lastName: 'Evans', bibNumber: '301' },
+                { firstName: 'Sara', lastName: 'Evans', bibNumber: '301', callUpNumber: '1' },
               ],
             },
           ],
@@ -175,8 +175,8 @@ describe('LogisticsService', () => {
       const multiWaveSchedule: TeamWaveSchedule = {
         ...schedule,
         waves: [
-          { waveName: 'Wave 1', categories: [{ categoryName: 'JV B Boys', stageTime: '07:40', startTime: '08:00', laps: 2, athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1' }] }] },
-          { waveName: 'Wave 2', categories: [{ categoryName: 'Varsity Boys', stageTime: '09:50', startTime: '10:10', laps: 4, athletes: [{ firstName: 'C', lastName: 'D', bibNumber: '2' }] }] },
+          { waveName: 'Wave 1', categories: [{ categoryName: 'JV B Boys', stageTime: '07:40', startTime: '08:00', laps: 2, athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1' }] }] },
+          { waveName: 'Wave 2', categories: [{ categoryName: 'Varsity Boys', stageTime: '09:50', startTime: '10:10', laps: 4, athletes: [{ firstName: 'C', lastName: 'D', bibNumber: '2', callUpNumber: '1' }] }] },
         ],
       };
       const enriched = service.enrichSchedule(multiWaveSchedule);

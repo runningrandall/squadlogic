@@ -9,6 +9,8 @@ relationships:
 
 # [IT-003] RaceResult URL validation
 
+**Status: RETIRED** — there is no longer a URL to validate; upload validation is now covered by [FR-012](../functional/FR-012-validate-callup-list-upload.md) and the malformed/empty workbook cases in [IT-008](./IT-008-callup-list-parsing.md).
+
 ## Objective
 
 Verify that the URL validation endpoint correctly accepts valid RaceResult event URLs and rejects invalid ones with appropriate error messages. Without this test, malformed URLs could bypass validation and cause downstream fetch failures with unhelpful error messages.

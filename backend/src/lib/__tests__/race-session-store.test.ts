@@ -14,8 +14,8 @@ const { setRaceSession, getRaceSession } = await import('../race-session-store.j
 
 const sampleSession = {
   metadata: { eventId: 'evt-1', eventName: 'Test Race', eventDate: '2026-08-01', eventLocation: 'UT', sourceUrl: '', teams: ['Team A'] },
-  participants: [{ firstName: 'Jane', lastName: 'Doe', team: 'Team A', category: 'JV A', bibNumber: '1' }],
-  fetchConfig: null,
+  participants: [{ firstName: 'Jane', lastName: 'Doe', team: 'Team A', category: 'JV A', bibNumber: '1', callUpNumber: '1' }],
+  categorySchedule: { 'JV A': { stageTime: '08:00', startTime: '08:15' } },
 };
 
 describe('race-session-store', () => {

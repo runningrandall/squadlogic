@@ -1,6 +1,6 @@
 ---
 id: Task-014
-title: "NFR-001/NFR-002 — Performance and accuracy verification"
+title: "NFR-002 — Accuracy verification"
 type: Task
 status: done
 track: E
@@ -8,14 +8,8 @@ priority: P1
 relationships:
   - target: ix://switchback/race-day-wave-schedule/Task-008
     type: depends_on
-  - target: ix://switchback/race-day-wave-schedule/NFR-001
-    type: references
   - target: ix://switchback/race-day-wave-schedule/NFR-002
     type: references
-  - target: ix://switchback/race-day-wave-schedule/TC-085
-    type: verifies
-  - target: ix://switchback/race-day-wave-schedule/TC-086
-    type: verifies
   - target: ix://switchback/race-day-wave-schedule/TC-087
     type: verifies
   - target: ix://switchback/race-day-wave-schedule/TC-088
@@ -23,24 +17,23 @@ relationships:
   - target: ix://switchback/race-day-wave-schedule/TC-089
     type: verifies
 ---
-# Task-014: NFR-001/NFR-002 — Performance and accuracy verification
+# Task-014: NFR-002 — Accuracy verification
+
+**Note**: This task originally covered both NFR-001 (fetch latency) and NFR-002 (accuracy). NFR-001 is retired — there is no external fetch anymore, so no latency budget applies. This task now covers NFR-002 only, and runs against a fixture workbook rather than a live external baseline.
 
 ## Scope
-Implement load tests for fetch+parse latency (NFR-001) and inspection-based accuracy verification (NFR-002) against a known RaceResult event baseline.
+Implement inspection-based accuracy verification (NFR-002) for the call-up list parsing pipeline (FR-013/FR-014), comparing parsed output field-by-field against a manually verified fixture call-up list workbook.
 
 ## Subtasks
-- [ ] **Load test script.** Run 50 sequential fetch+parse requests against RaceResult event 411620. Measure p50 and p95 latency. Assert p50 ≤ 5s, p95 ≤ 10s.
-- [ ] **Timeout configuration verification.** Assert HTTP request timeout is configured at ≤ 10s.
-- [ ] **Accuracy baseline.** Manually verify 30+ participants from event 411620 (name, team, category, bib). Store as test fixture.
-- [ ] **Accuracy test.** Compare system-extracted participants field-by-field against the manual baseline. Assert 100% match on all fields and participant count.
-- [ ] **Test implementation.** TC-085–TC-089.
+- [ ] **Accuracy baseline.** Manually verify 30+ participants and their category's stage/start time from a fixture call-up list workbook (name, team, category, bib, call-up number, stageTime, startTime). Store the workbook and the verified baseline as test fixtures.
+- [ ] **Accuracy test.** Compare system-parsed participants and per-category schedule field-by-field against the manual baseline. Assert 100% match on all fields and participant count.
+- [ ] **Test implementation.** TC-087–TC-089.
 
 ## Deliverables
-- Load test script + assertions
-- Manual accuracy baseline fixture (30+ participants)
+- Manual accuracy baseline fixture (30+ participants, fixture workbook)
 - Accuracy comparison test
 - Test report template
 
 ## Notes
-- Depends on Task-008 (complete pipeline needed for end-to-end latency measurement).
-- The accuracy baseline is a one-time manual effort but must be maintained if the test event changes.
+- Depends on Task-008 (complete pipeline needed for end-to-end accuracy comparison against the enriched schedule).
+- The accuracy baseline is a one-time manual effort against a checked-in fixture workbook — unlike the retired RaceResult-based baseline, it does not need to be re-verified against a live external event and will not drift due to third-party changes.

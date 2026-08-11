@@ -5,6 +5,7 @@ const COLUMN_HEADERS = [
   'Wave',
   'Category',
   'Athlete Name',
+  'Staging #',
   'Bib #',
   'Wave Meeting',
   'Warmup Start',
@@ -14,7 +15,7 @@ const COLUMN_HEADERS = [
   'Laps',
 ];
 
-const COLUMN_WIDTHS = [140, 150, 180, 70, 80, 110, 100, 80, 100, 60];
+const COLUMN_WIDTHS = [140, 150, 180, 70, 70, 80, 110, 100, 80, 100, 60];
 
 export class SheetsExportService {
   constructor(private readonly sheetsPort: SheetsPort) {}
@@ -50,7 +51,7 @@ export class SheetsExportService {
       // Wave header row (merged)
       waveHeaderRows.push(rows.length);
       rows.push({
-        values: [wave.waveName, '', '', '', '', '', '', '', '', ''],
+        values: [wave.waveName, '', '', '', '', '', '', '', '', '', ''],
       });
 
       for (const category of wave.categories) {
@@ -63,6 +64,7 @@ export class SheetsExportService {
               wave.waveName,
               category.categoryName,
               `${athlete.firstName} ${athlete.lastName}`,
+              athlete.callUpNumber ?? '',
               athlete.bibNumber,
               logistics?.waveMeetingTime ?? '',
               logistics?.warmupStart ?? '',

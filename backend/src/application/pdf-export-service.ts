@@ -253,7 +253,7 @@ export class PdfExportService {
 
     // Two independent columns: even-indexed categories on left, odd on right.
     // Each column flows downward on its own — no height coupling between neighbours.
-    const COL_W = 260; // name (196) + bib (56) + 8px padding
+    const COL_W = 260; // name (156) + staging # (40) + bib (56) + 8px padding
     const COL_GAP = 20;
     const R = L + COL_W + COL_GAP;
 
@@ -291,7 +291,8 @@ export class PdfExportService {
     colW: number,
     brand: PdfBranding,
   ): number {
-    const nameW = 196;
+    const nameW = 156;
+    const stagingW = 40;
     const bibW = 56;
     let y = startY;
 
@@ -310,7 +311,8 @@ export class PdfExportService {
     doc.rect(cx, y, colW, 14).fill('#E0E0E0');
     doc.fillColor('#555555').fontSize(7).font('Helvetica-Bold');
     doc.text('ATHLETE', cx + 4, y + 4, { width: nameW - 4, lineBreak: false });
-    doc.text('BIB', cx + nameW + 8, y + 4, { width: bibW - 4, lineBreak: false });
+    doc.text('STG #', cx + nameW + 4, y + 4, { width: stagingW - 4, lineBreak: false });
+    doc.text('BIB', cx + nameW + stagingW + 8, y + 4, { width: bibW - 4, lineBreak: false });
     y += 14;
 
     // Athlete rows
@@ -321,7 +323,8 @@ export class PdfExportService {
       doc.fillColor('#000000').fontSize(8).font('Helvetica');
       const a = cat.athletes[r];
       doc.text(`${a.lastName}, ${a.firstName}`, cx + 4, y + 2, { width: nameW - 4, lineBreak: false });
-      doc.text(a.bibNumber, cx + nameW + 8, y + 2, { width: bibW - 4, lineBreak: false });
+      doc.text(a.callUpNumber ?? '—', cx + nameW + 4, y + 2, { width: stagingW - 4, lineBreak: false });
+      doc.text(a.bibNumber, cx + nameW + stagingW + 8, y + 2, { width: bibW - 4, lineBreak: false });
       y += 13;
     }
 

@@ -23,6 +23,7 @@ const schedule: TeamWaveSchedule = {
               firstName: 'Dave',
               lastName: 'Adams',
               bibNumber: '201',
+              callUpNumber: '1',
               logistics: {
                 waveMeetingTime: '09:10',
                 warmupStart: '09:10',
@@ -35,6 +36,7 @@ const schedule: TeamWaveSchedule = {
               firstName: 'Mike',
               lastName: 'Clark',
               bibNumber: '202',
+              callUpNumber: '1',
               logistics: {
                 waveMeetingTime: '09:10',
                 warmupStart: '09:10',
@@ -121,7 +123,7 @@ describe('PdfExportService', () => {
               startTime: '10:10',
               laps: 4,
               athletes: [
-                { firstName: 'Dave', lastName: 'Adams', bibNumber: '201' }, // no logistics
+                { firstName: 'Dave', lastName: 'Adams', bibNumber: '201', callUpNumber: '1' }, // no logistics
               ],
             },
           ],
@@ -138,8 +140,8 @@ describe('PdfExportService', () => {
       waves: [{
         waveName: 'Wave 1',
         categories: [
-          { categoryName: 'JV B Boys', stageTime: '08:35', startTime: '08:55', laps: 3, athletes: [{ firstName: 'B', lastName: 'Last', bibNumber: '2' }] },
-          { categoryName: 'JV A Boys', stageTime: '08:10', startTime: '08:30', laps: 3, athletes: [{ firstName: 'A', lastName: 'Last', bibNumber: '1' }] },
+          { categoryName: 'JV B Boys', stageTime: '08:35', startTime: '08:55', laps: 3, athletes: [{ firstName: 'B', lastName: 'Last', bibNumber: '2', callUpNumber: '1' }] },
+          { categoryName: 'JV A Boys', stageTime: '08:10', startTime: '08:30', laps: 3, athletes: [{ firstName: 'A', lastName: 'Last', bibNumber: '1', callUpNumber: '1' }] },
         ],
       }],
     };
@@ -155,9 +157,9 @@ describe('PdfExportService', () => {
       waves: [{
         waveName: 'Wave 1',
         categories: [
-          { categoryName: 'Freshman C Boys', stageTime: '09:50', startTime: '10:10', laps: 2, athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1' }] },
-          { categoryName: 'JV D Girls',      stageTime: '09:50', startTime: '10:10', laps: 2, athletes: [{ firstName: 'C', lastName: 'D', bibNumber: '2' }] },
-          { categoryName: 'JV E Boys',       stageTime: '09:50', startTime: '10:10', laps: 2, athletes: [{ firstName: 'E', lastName: 'F', bibNumber: '3' }] },
+          { categoryName: 'Freshman C Boys', stageTime: '09:50', startTime: '10:10', laps: 2, athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1' }] },
+          { categoryName: 'JV D Girls',      stageTime: '09:50', startTime: '10:10', laps: 2, athletes: [{ firstName: 'C', lastName: 'D', bibNumber: '2', callUpNumber: '1' }] },
+          { categoryName: 'JV E Boys',       stageTime: '09:50', startTime: '10:10', laps: 2, athletes: [{ firstName: 'E', lastName: 'F', bibNumber: '3', callUpNumber: '1' }] },
         ],
       }],
     };
@@ -179,9 +181,9 @@ describe('PdfExportService', () => {
               startTime: '10:10',
               laps: null,
               athletes: [
-                { firstName: 'Athlete', lastName: 'One', bibNumber: '1', logistics: { waveMeetingTime: '09:10', warmupStart: '09:10', warmupEnd: '09:40', stagingTime: '09:50', raceStart: '10:10' } },
-                { firstName: 'Athlete', lastName: 'Two', bibNumber: '2', logistics: { waveMeetingTime: '09:10', warmupStart: '09:10', warmupEnd: '09:40', stagingTime: '09:50', raceStart: '10:10' } },
-                { firstName: 'Athlete', lastName: 'Three', bibNumber: '3', logistics: { waveMeetingTime: '09:10', warmupStart: '09:10', warmupEnd: '09:40', stagingTime: '09:50', raceStart: '10:10' } },
+                { firstName: 'Athlete', lastName: 'One', bibNumber: '1', callUpNumber: '1', logistics: { waveMeetingTime: '09:10', warmupStart: '09:10', warmupEnd: '09:40', stagingTime: '09:50', raceStart: '10:10' } },
+                { firstName: 'Athlete', lastName: 'Two', bibNumber: '2', callUpNumber: '1', logistics: { waveMeetingTime: '09:10', warmupStart: '09:10', warmupEnd: '09:40', stagingTime: '09:50', raceStart: '10:10' } },
+                { firstName: 'Athlete', lastName: 'Three', bibNumber: '3', callUpNumber: '1', logistics: { waveMeetingTime: '09:10', warmupStart: '09:10', warmupEnd: '09:40', stagingTime: '09:50', raceStart: '10:10' } },
               ],
             },
           ],

@@ -1,14 +1,14 @@
 import { PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { dynamoClient, TABLE_NAME } from './dynamodb.js';
 import type { RaceEventMetadata, RaceParticipant } from '../domain/race-event.js';
-import type { RaceEventFetchConfig } from '../application/race-event-service.js';
+import type { CategorySchedule } from '../application/wave-schedule-service.js';
 
 const TTL_SECONDS = 60 * 60 * 2; // 2 hours
 
 export interface RaceSessionData {
   metadata: RaceEventMetadata;
   participants: RaceParticipant[];
-  fetchConfig: RaceEventFetchConfig | null;
+  categorySchedule: Record<string, CategorySchedule>;
 }
 
 export async function setRaceSession(eventId: string, data: RaceSessionData): Promise<void> {

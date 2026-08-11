@@ -11,6 +11,8 @@ relationships:
 
 # [IT-006] RaceResult page structure validation
 
+**Status: RETIRED** — there is no longer an external RaceResult page/API structure to act as a volatility boundary; the analogous contract-style coverage for the new upload format (fixture workbook shapes, header row detection) lives in [IT-008](./IT-008-callup-list-parsing.md).
+
 ## Objective
 
 Validate that the RaceResult page structure and dynamic API contract have not changed in ways that would break parsing. This test acts as a contract test and early-warning canary — it verifies the specific DOM elements, CSS selectors, and API endpoint patterns that FR-002 and FR-003 depend on, catching structural drift before it surfaces as corrupt data or silent failures in production.

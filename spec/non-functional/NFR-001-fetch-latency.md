@@ -12,6 +12,8 @@ relationships:
 
 # [NFR-001] External data fetch latency
 
+**Status: RETIRED** — there is no external fetch anymore; the Call-Up List .xlsx is uploaded and parsed locally and synchronously, so no fetch-latency budget applies. See [NFR-002](./NFR-002-data-accuracy.md) for the retained accuracy requirement.
+
 ## Statement
 
 The system SHALL complete the fetch and parse of a RaceResult event page (event metadata and full participant list) within 10 seconds under normal network conditions, including all necessary HTTP requests to the external RaceResult platform.

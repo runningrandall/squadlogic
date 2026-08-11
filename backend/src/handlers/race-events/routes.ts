@@ -1,9 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { RaceResultUrlSchema } from '../../domain/race-event.js';
-import { RaceResultClient } from '../../adapters/raceresult-client.js';
-import { RaceResultHtmlParser } from '../../adapters/raceresult-parser.js';
+import { CallUpListUploadSchema } from '../../domain/race-event.js';
 import { EventBridgePublisher } from '../../adapters/eventbridge-publisher.js';
-import { RaceEventService } from '../../application/race-event-service.js';
+import { CallUpListService } from '../../application/callup-list-service.js';
 import { WaveScheduleService } from '../../application/wave-schedule-service.js';
 import { LogisticsService } from '../../application/logistics-service.js';
 import { PdfExportService } from '../../application/pdf-export-service.js';
@@ -14,20 +12,14 @@ import { WaveConfigService } from '../../application/wave-config-service.js';
 import { validate } from '../../lib/validation.js';
 import { success } from '../../lib/response.js';
 import { ValidationError } from '../../lib/errors.js';
-import type { RaceEventMetadata, RaceParticipant, TeamWaveSchedule } from '../../domain/race-event.js';
-import type { RaceEventFetchConfig } from '../../application/race-event-service.js';
-import { parseCsvParticipants } from '../../adapters/csv-participant-parser.js';
+import type { TeamWaveSchedule } from '../../domain/race-event.js';
 import { setRaceSession, getRaceSession } from '../../lib/race-session-store.js';
 import type { RaceSessionData } from '../../lib/race-session-store.js';
 
 function createServices() {
   const eventPublisher = new EventBridgePublisher();
   return {
-    raceEvent: new RaceEventService(
-      new RaceResultClient(),
-      new RaceResultHtmlParser(),
-      eventPublisher,
-    ),
+    callUpList: new CallUpListService(eventPublisher),
     waveConfig: new WaveConfigService(
       new WaveConfigDynamoRepository(),
       eventPublisher,
@@ -45,10 +37,7 @@ export default async function raceEventRoutes(
   const services = createServices();
 
   // In-memory cache (warm path) — falls back to DynamoDB across Lambda instances
-  const importCache = new Map<
-    string,
-    { metadata: RaceEventMetadata; participants: RaceParticipant[]; fetchConfig: RaceEventFetchConfig | null }
-  >();
+  const importCache = new Map<string, RaceSessionData>();
 
   // Schedule cache keyed by eventId:teamName
   const scheduleCache = new Map<string, TeamWaveSchedule>();
@@ -62,27 +51,28 @@ export default async function raceEventRoutes(
     return session;
   }
 
-  // POST /race-events/import — validate URL and import event data
+  // POST /race-events/import/callup — upload a league call-up list (.xlsx) and import it
   fastify.post(
-    '/race-events/import',
+    '/race-events/import/callup',
     async (
-      request: FastifyRequest<{ Body: { url: unknown } }>,
+      request: FastifyRequest<{
+        Body: { fileData: unknown; eventName?: unknown; eventLocation?: unknown };
+      }>,
       reply,
     ) => {
-      const body = request.body as { url: unknown };
-      if (!body?.url) {
-        throw new ValidationError(
-          'URL must be a valid RaceResult event URL (e.g., https://my.raceresult.com/411620/)',
-        );
-      }
+      const dto = validate(CallUpListUploadSchema, request.body);
+      const buffer = Buffer.from(dto.fileData, 'base64');
 
-      const { url, eventId } = validate(RaceResultUrlSchema, body.url);
-      const result = await services.raceEvent.importEvent(url, eventId);
+      const result = await services.callUpList.importCallUpList(buffer, {
+        eventName: dto.eventName,
+        eventLocation: dto.eventLocation,
+      });
 
-      const session = {
+      const eventId = result.metadata.eventId;
+      const session: RaceSessionData = {
         metadata: result.metadata,
         participants: result.participants,
-        fetchConfig: result.fetchConfig,
+        categorySchedule: result.categorySchedule,
       };
       importCache.set(eventId, session);
       await setRaceSession(eventId, session);
@@ -98,63 +88,6 @@ export default async function raceEventRoutes(
     },
   );
 
-  // POST /race-events/import/csv — import participants from a CSV file upload
-  fastify.post(
-    '/race-events/import/csv',
-    async (
-      request: FastifyRequest<{
-        Body: {
-          csvData: string;
-          teamName: string;
-          eventName?: string;
-          eventDate?: string;
-          eventLocation?: string;
-        };
-      }>,
-      reply,
-    ) => {
-      const body = request.body as {
-        csvData: string;
-        teamName: string;
-        eventName?: string;
-        eventDate?: string;
-        eventLocation?: string;
-      };
-
-      if (!body?.csvData) throw new ValidationError('csvData is required.');
-      if (!body?.teamName) throw new ValidationError('teamName is required.');
-
-      const participants = parseCsvParticipants(body.csvData, body.teamName);
-      if (participants.length === 0) {
-        throw new ValidationError('No participants found in the CSV. Check the file format.');
-      }
-
-      const eventId = `csv-${Date.now()}`;
-      const metadata: RaceEventMetadata = {
-        eventName: body.eventName ?? 'Race Event',
-        eventDate: body.eventDate ?? '',
-        eventLocation: body.eventLocation ?? '',
-        eventId,
-        sourceUrl: '',
-        teams: [body.teamName],
-      };
-
-      // fetchConfig is null for CSV imports — no RaceResult re-fetch needed
-      const csvSession = { metadata, participants, fetchConfig: null };
-      importCache.set(eventId, csvSession);
-      await setRaceSession(eventId, csvSession);
-
-      return success(reply, {
-        eventId,
-        eventName: metadata.eventName,
-        eventDate: metadata.eventDate,
-        eventLocation: metadata.eventLocation,
-        teams: metadata.teams,
-        participantCount: participants.length,
-      });
-    },
-  );
-
   // GET /race-events/:eventId/teams — list teams with participant counts
   fastify.get(
     '/race-events/:eventId/teams',
@@ -165,11 +98,11 @@ export default async function raceEventRoutes(
       const cached = await resolveImport(request.params.eventId);
       if (!cached) {
         throw new ValidationError(
-          'Event not imported. Submit the event URL first via POST /race-events/import.',
+          'Event not imported. Upload a call-up list first via POST /race-events/import/callup.',
         );
       }
 
-      const teams = services.raceEvent.getTeamList(
+      const teams = services.callUpList.getTeamList(
         cached.metadata.teams,
         cached.participants,
       );
@@ -178,18 +111,13 @@ export default async function raceEventRoutes(
     },
   );
 
-  // POST /race-events/:eventId/schedule — generate enriched wave schedule from DynamoDB config
+  // POST /race-events/:eventId/schedule — generate enriched wave schedule
   fastify.post(
     '/race-events/:eventId/schedule',
     async (
       request: FastifyRequest<{
         Params: { eventId: string };
-        Body: {
-          teamName: string;
-          arrivalOverrides?: Record<string, number>;
-          warmupDurationMinutes?: number;
-          stagingBeforeMinutes?: number;
-        };
+        Body: { teamName: string };
       }>,
       reply,
     ) => {
@@ -198,31 +126,22 @@ export default async function raceEventRoutes(
         throw new ValidationError('Event not imported.');
       }
 
-      const body = request.body as {
-        teamName: string;
-        arrivalOverrides?: Record<string, number>;
-        warmupDurationMinutes?: number;
-        stagingBeforeMinutes?: number;
-      };
-
+      const body = request.body as { teamName: string };
       if (!body.teamName) {
         throw new ValidationError('teamName is required.');
       }
 
-      // For CSV imports fetchConfig is null — use cached participants directly.
-      // For URL imports, re-fetch from RaceResult filtered to the selected team.
-      const teamParticipants = cached.fetchConfig
-        ? await services.raceEvent.getParticipantsForTeam(cached.fetchConfig, body.teamName)
-        : cached.participants.filter((p) => p.team === body.teamName);
+      const teamParticipants = cached.participants.filter((p) => p.team === body.teamName);
 
-      // Read wave config from DynamoDB (seeds defaults on first access)
+      // Read wave config from DynamoDB — supplies wave grouping + laps only
+      // (stage/start times come from the uploaded call-up list, cached.categorySchedule).
       const waveConfig = await services.waveConfig.getConfig();
 
-      // Generate schedule grouped by wave/category
       const schedule = services.schedule.generateSchedule(
         body.teamName,
         teamParticipants,
         waveConfig,
+        cached.categorySchedule,
         cached.metadata.eventName,
         cached.metadata.eventDate,
       );
@@ -257,12 +176,10 @@ export default async function raceEventRoutes(
 
       // If no cached schedule, generate one with defaults
       if (!enriched) {
-        const teamParticipants = cached.fetchConfig
-          ? await services.raceEvent.getParticipantsForTeam(cached.fetchConfig, body.teamName)
-          : cached.participants.filter((p) => p.team === body.teamName);
+        const teamParticipants = cached.participants.filter((p) => p.team === body.teamName);
         const waveConfig = await services.waveConfig.getConfig();
         const schedule = services.schedule.generateSchedule(
-          body.teamName, teamParticipants, waveConfig,
+          body.teamName, teamParticipants, waveConfig, cached.categorySchedule,
           cached.metadata.eventName, cached.metadata.eventDate,
         );
         enriched = services.logistics.enrichSchedule(schedule);
