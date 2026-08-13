@@ -185,5 +185,30 @@ describe('LogisticsService', () => {
       expect(wave1Meeting).toBe('07:00'); // 08:00 - 60
       expect(wave2Meeting).toBe('09:10'); // 10:10 - 60
     });
+
+    it('JD waves use a fixed 13:00 head-coach meeting instead of the earliest-start-60 formula', () => {
+      const jdSchedule: TeamWaveSchedule = {
+        ...schedule,
+        waves: [
+          {
+            waveName: 'Wave 7 - JD',
+            categories: [
+              {
+                categoryName: 'Advanced Boys',
+                stageTime: '14:15',
+                startTime: '14:30',
+                laps: 1,
+                athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1' }],
+              },
+            ],
+          },
+        ],
+      };
+      const enriched = service.enrichSchedule(jdSchedule);
+      const logistics = enriched.waves[0].categories[0].athletes[0].logistics;
+      expect(logistics?.waveMeetingTime).toBe('13:00');
+      expect(logistics?.warmupStart).toBe('13:10'); // meeting + 10
+      expect(logistics?.raceStart).toBe('14:30');
+    });
   });
 });
