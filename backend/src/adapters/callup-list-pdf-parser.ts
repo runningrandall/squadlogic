@@ -17,7 +17,36 @@ declare global {
   var pdfjsWorker: { WorkerMessageHandler: unknown } | undefined;
 }
 
+// pdfjs-dist's module-level init unconditionally does `new DOMMatrix()` (for a rendering-only
+// constant) and warns about `Path2D` — both browser globals with no Node.js equivalent. It looks
+// for an optional `@napi-rs/canvas` package to polyfill them; without it, that unconditional
+// construction throws "DOMMatrix is not defined" at import time, even though we only ever call
+// getTextContent() and never touch rendering. Minimal stand-ins (never actually exercised by text
+// extraction) satisfy that init without pulling in a native-binary dependency that's awkward to
+// bundle correctly for Lambda's Amazon Linux target.
+function installPdfjsNodePolyfills(): void {
+  if (!globalThis.DOMMatrix) {
+    class DOMMatrixPolyfill {
+      constructor(_init?: unknown) {}
+      translate(): this { return this; }
+      scale(): this { return this; }
+      multiply(): this { return this; }
+      multiplySelf(): this { return this; }
+      preMultiplySelf(): this { return this; }
+      invertSelf(): this { return this; }
+    }
+    globalThis.DOMMatrix = DOMMatrixPolyfill as unknown as typeof DOMMatrix;
+  }
+  if (!globalThis.Path2D) {
+    class Path2DPolyfill {
+      addPath(): void {}
+    }
+    globalThis.Path2D = Path2DPolyfill as unknown as typeof Path2D;
+  }
+}
+
 async function extractLines(buffer: Buffer): Promise<string[]> {
+  installPdfjsNodePolyfills();
   const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
   // pdfjs-dist normally spins up its "fake worker" (no real Worker thread in Node) by
