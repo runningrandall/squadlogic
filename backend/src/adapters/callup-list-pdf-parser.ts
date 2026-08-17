@@ -13,8 +13,24 @@ const PAGE_NUMBER_REGEX = /^\d+$/;
 const DATA_PREFIX_REGEX = /^(\d{1,2}:\d{2}\s*[AP]M)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/;
 const NAME_DIV_GRD_TEAM_REGEX = /^(.+?)\s+([1-9])\s+(7|8|9|10|11|12)\s+(.+)$/;
 
+declare global {
+  var pdfjsWorker: { WorkerMessageHandler: unknown } | undefined;
+}
+
 async function extractLines(buffer: Buffer): Promise<string[]> {
   const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+  // pdfjs-dist normally spins up its "fake worker" (no real Worker thread in Node) by
+  // dynamically importing a separate pdf.worker.mjs file at a path relative to its own
+  // module — that file isn't carried over into a single-file esbuild/Lambda bundle, which
+  // throws "Setting up fake worker failed: Cannot find module ...pdf.worker.mjs". Statically
+  // importing the worker module here (so esbuild inlines it) and registering it globally lets
+  // pdfjs-dist skip that runtime file lookup entirely.
+  if (!globalThis.pdfjsWorker) {
+    const worker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+    globalThis.pdfjsWorker = { WorkerMessageHandler: worker.WorkerMessageHandler };
+  }
+
   const data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   const doc = await pdfjsLib.getDocument({ data, useSystemFonts: true }).promise;
 
