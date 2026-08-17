@@ -186,7 +186,9 @@ describe('LogisticsService', () => {
       expect(wave2Meeting).toBe('09:10'); // 10:10 - 60
     });
 
-    it('JD waves use a fixed 13:00 head-coach meeting instead of the earliest-start-60 formula', () => {
+    it('JD waves use the standard earliest-start-60 formula, same as every other wave', () => {
+      // Each JD wave publishes its own meeting time on the league schedule (lehimtb.com/race-day) —
+      // Wave 7/8/9 are not a single shared 1pm head-coach meeting.
       const jdSchedule: TeamWaveSchedule = {
         ...schedule,
         waves: [
@@ -206,8 +208,8 @@ describe('LogisticsService', () => {
       };
       const enriched = service.enrichSchedule(jdSchedule);
       const logistics = enriched.waves[0].categories[0].athletes[0].logistics;
-      expect(logistics?.waveMeetingTime).toBe('13:00');
-      expect(logistics?.warmupStart).toBe('13:10'); // meeting + 10
+      expect(logistics?.waveMeetingTime).toBe('13:30'); // 14:30 - 60, matches published Wave 7 meeting time
+      expect(logistics?.warmupStart).toBe('13:40'); // meeting + 10
       expect(logistics?.raceStart).toBe('14:30');
     });
   });

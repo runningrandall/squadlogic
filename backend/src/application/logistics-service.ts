@@ -19,11 +19,6 @@ const STAGING_BUFFER    = 5;    // buffer between WU end and staging (5 min tran
 
 const VARSITY_JVA_PATTERN = /varsity|jv\s*a/i;
 
-// JD (Jr Devo) waves share a single head-coach meeting at a fixed time rather than the
-// standard per-wave "earliest start − 60 min" formula.
-const JD_WAVE_PATTERN = /-\s*JD\b/i;
-const JD_MEETING_TIME = '13:00'; // Approx 1pm, per league schedule
-
 export class LogisticsService {
   calculateDefaults(
     waveConfig: WaveConfig[],
@@ -67,18 +62,9 @@ export class LogisticsService {
           .map((cat) => this.parseTime(cat.startTime))
           .filter((t) => t > 0);
         const firstStart = waveStartMinutes.length > 0 ? Math.min(...waveStartMinutes) : 0;
-        const isJdWave = JD_WAVE_PATTERN.test(wave.waveName);
 
-        const waveMeetingTime = isJdWave
-          ? JD_MEETING_TIME
-          : firstStart > 0
-            ? this.formatTime(firstStart - WAVE_MEETING_LEAD)
-            : '';
-        const warmupStart = isJdWave
-          ? this.formatTime(this.parseTime(JD_MEETING_TIME) + MEETING_DURATION)
-          : firstStart > 0
-            ? this.formatTime(firstStart - WAVE_MEETING_LEAD + MEETING_DURATION)
-            : '';
+        const waveMeetingTime = firstStart > 0 ? this.formatTime(firstStart - WAVE_MEETING_LEAD) : '';
+        const warmupStart     = firstStart > 0 ? this.formatTime(firstStart - WAVE_MEETING_LEAD + MEETING_DURATION) : '';
 
         return {
           ...wave,
