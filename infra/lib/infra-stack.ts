@@ -11,7 +11,6 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as path from 'node:path';
 import type { Construct } from 'constructs';
 
@@ -34,7 +33,6 @@ export class InfraStack extends cdk.Stack {
   public readonly api: apigwv2.HttpApi;
   public readonly logoBucket: s3.Bucket;
   public readonly googleApiSecret: secretsmanager.Secret;
-  public readonly wafWebAcl: wafv2.CfnWebACL;
 
   constructor(scope: Construct, id: string, props: InfraStackProps) {
     super(scope, id, props);
@@ -154,57 +152,6 @@ export class InfraStack extends cdk.Stack {
             : cdk.RemovalPolicy.RETAIN,
       },
     );
-
-    // WAF WebACL with rate limiting for RaceResult import endpoint
-    this.wafWebAcl = new wafv2.CfnWebACL(this, 'ApiWafWebAcl', {
-      name: `TeamManager-WAF-${stageName}`,
-      defaultAction: { allow: {} },
-      scope: 'REGIONAL',
-      visibilityConfig: {
-        cloudWatchMetricsEnabled: true,
-        metricName: `TeamManager-WAF-${stageName}`,
-        sampledRequestsEnabled: true,
-      },
-      rules: [
-        {
-          name: 'RaceResultImportRateLimit',
-          priority: 1,
-          action: {
-            block: {
-              customResponse: {
-                responseCode: 429,
-              },
-            },
-          },
-          statement: {
-            rateBasedStatement: {
-              limit: 100,
-              aggregateKeyType: 'IP',
-              scopeDownStatement: {
-                byteMatchStatement: {
-                  searchString: '/race-events/import',
-                  fieldToMatch: {
-                    uriPath: {},
-                  },
-                  textTransformations: [
-                    {
-                      priority: 0,
-                      type: 'LOWERCASE',
-                    },
-                  ],
-                  positionalConstraint: 'STARTS_WITH',
-                },
-              },
-            },
-          },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: `RaceResultImportRateLimit-${stageName}`,
-            sampledRequestsEnabled: true,
-          },
-        },
-      ],
-    });
 
     // ── Lambda Function (Fastify backend) ──
     const backendFn = new NodejsFunction(this, 'BackendFn', {
@@ -349,11 +296,6 @@ export class InfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'GoogleApiSecretArn', {
       value: this.googleApiSecret.secretArn,
       description: 'Secrets Manager ARN for Google API credentials',
-    });
-
-    new cdk.CfnOutput(this, 'WafWebAclArn', {
-      value: this.wafWebAcl.attrArn,
-      description: 'WAF WebACL ARN for API rate limiting',
     });
   }
 }
