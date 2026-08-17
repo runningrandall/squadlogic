@@ -233,7 +233,7 @@ export default function RaceDayPage() {
       {step === 'upload' && (
         <div className="bg-white rounded-lg shadow p-6">
           <p className="text-sm text-gray-500 mb-4">
-            Upload the league&apos;s call-up list (.xlsx) to import categories, staging/start
+            Upload the league&apos;s call-up list (.xlsx or .pdf) to import categories, staging/start
             times, and staging numbers, and generate your team&apos;s race day schedule.
           </p>
           <div className="space-y-3">
@@ -260,7 +260,7 @@ export default function RaceDayPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Call-Up List File (.xlsx) *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Call-Up List File (.xlsx or .pdf) *</label>
               <div className="flex gap-3 items-center">
                 <button
                   type="button"
@@ -275,7 +275,7 @@ export default function RaceDayPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".xlsx"
+                  accept=".xlsx,.pdf"
                   onChange={handleFileChange}
                   className="hidden"
                 />

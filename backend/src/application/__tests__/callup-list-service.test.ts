@@ -3,6 +3,26 @@ import ExcelJS from 'exceljs';
 import { CallUpListService } from '../callup-list-service.js';
 import type { EventPublisher } from '../../ports/event-publisher.js';
 
+async function buildPdfFixture(): Promise<Buffer> {
+  const PDFDocument = (await import('pdfkit')).default;
+  const doc = new PDFDocument({ size: 'LETTER', margins: { top: 40, bottom: 40, left: 40, right: 40 } });
+  const chunks: Buffer[] = [];
+  doc.on('data', (c: Buffer) => chunks.push(c));
+  const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+  doc.fontSize(9);
+  for (const line of [
+    'Varsity Boys',
+    'STAGING TIME: 09/20/2025 @ 10:05 AM',
+    'START TIME: 09/20/2025 @ 10:20 AM',
+    '10:05 AM 1 10001 5 MAX POWER 2 11 Lehi HS Varsity Boys',
+  ]) {
+    doc.text(line, doc.page.margins.left, doc.y, { lineBreak: false });
+    doc.moveDown(0.6);
+  }
+  doc.end();
+  return done;
+}
+
 const HEADER_ROW = ['STAGING', 'CALLUP', 'PLATE', 'Region', 'NAME', 'DIV', 'GRD', 'TEAM', 'CONTEST'];
 
 async function buildWorkbook(rows: (string | number)[][]): Promise<Buffer> {
@@ -66,6 +86,24 @@ describe('CallUpListService', () => {
         'RaceEventImported',
         expect.objectContaining({ participantCount: 3, teamCount: 2 }),
       );
+    });
+
+    it('auto-detects a PDF upload and parses it the same as an xlsx upload', async () => {
+      const service = new CallUpListService(fakePublisher());
+      const result = await service.importCallUpList(await buildPdfFixture());
+
+      expect(result.participants).toHaveLength(1);
+      expect(result.participants[0].team).toBe('Lehi HS');
+      expect(result.categorySchedule).toEqual({
+        'Varsity Boys': { stageTime: '10:05', startTime: '10:20' },
+      });
+    });
+
+    it('rejects a file that is neither xlsx nor pdf', async () => {
+      const service = new CallUpListService(fakePublisher());
+      await expect(
+        service.importCallUpList(Buffer.from('not a real file')),
+      ).rejects.toThrow('Unsupported call-up list file');
     });
   });
 

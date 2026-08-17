@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import type { RaceParticipant } from '../domain/race-event.js';
+import { TIME_LINE_REGEX, to24Hour, toIsoDate, toTitleCase } from './callup-list-format.js';
 
 export interface CallUpCategorySchedule {
   categoryName: string;
@@ -11,24 +12,6 @@ export interface CallUpCategorySchedule {
 export interface CallUpListImportResult {
   eventDate: string;
   categories: CallUpCategorySchedule[];
-}
-
-// e.g. "STAGING TIME: 09/20/2025 @ 7:45 AM" / "START TIME: 09/20/2025 @ 8:00 AM"
-const TIME_LINE_REGEX =
-  /^(STAGING TIME|START TIME):\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*@\s*(\d{1,2}):(\d{2})\s*(AM|PM)$/i;
-
-function toTitleCase(str: string): string {
-  return str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function to24Hour(hour: number, minute: number, meridiem: string): string {
-  let h = hour % 12;
-  if (meridiem.toUpperCase() === 'PM') h += 12;
-  return `${h.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-}
-
-function toIsoDate(month: number, day: number, year: number): string {
-  return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 }
 
 function cellText(value: ExcelJS.CellValue): string {

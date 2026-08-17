@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const CallUpListUploadSchema = z.object({
-  fileData: z.string().min(1, 'fileData (base64-encoded .xlsx) is required'),
+  fileData: z.string().min(1, 'fileData (base64-encoded .xlsx or .pdf) is required'),
   eventName: z.string().optional(),
   eventLocation: z.string().optional(),
 });

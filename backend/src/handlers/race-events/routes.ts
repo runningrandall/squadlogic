@@ -55,7 +55,7 @@ export default async function raceEventRoutes(
     return session;
   }
 
-  // POST /race-events/import/callup — upload a league call-up list (.xlsx) and import it
+  // POST /race-events/import/callup — upload a league call-up list (.xlsx or .pdf, auto-detected) and import it
   fastify.post(
     '/race-events/import/callup',
     async (

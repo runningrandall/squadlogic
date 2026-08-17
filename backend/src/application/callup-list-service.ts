@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type { RaceEventMetadata, RaceParticipant } from '../domain/race-event.js';
 import type { EventPublisher } from '../ports/event-publisher.js';
 import { parseCallUpList } from '../adapters/callup-list-parser.js';
+import { parseCallUpListPdf } from '../adapters/callup-list-pdf-parser.js';
+import { detectCallUpListFormat } from '../adapters/callup-list-format.js';
+import { ValidationError } from '../lib/errors.js';
 
 export interface CategorySchedule {
   stageTime: string;
@@ -21,7 +24,11 @@ export class CallUpListService {
     buffer: Buffer,
     overrides?: { eventName?: string; eventLocation?: string },
   ): Promise<CallUpListImportResult> {
-    const parsed = await parseCallUpList(buffer);
+    const format = detectCallUpListFormat(buffer);
+    if (!format) {
+      throw new ValidationError('Unsupported call-up list file. Upload a .xlsx or .pdf file.');
+    }
+    const parsed = format === 'pdf' ? await parseCallUpListPdf(buffer) : await parseCallUpList(buffer);
 
     const participants: RaceParticipant[] = [];
     const categorySchedule: Record<string, CategorySchedule> = {};
