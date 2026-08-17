@@ -42,6 +42,10 @@ vi.mock('../../../lib/race-session-store.js', () => ({
   setRaceSession: vi.fn().mockResolvedValue(undefined),
   getRaceSession: vi.fn().mockResolvedValue(null),
 }));
+const mockEnforceRateLimit = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../../lib/rate-limiter.js', () => ({
+  enforceRateLimit: (...args: unknown[]) => mockEnforceRateLimit(...args),
+}));
 
 const { default: raceEventRoutes } = await import('../routes.js');
 
@@ -135,6 +139,34 @@ describe('Race event routes', () => {
         payload: { fileData: Buffer.from('garbage').toString('base64') },
       });
       expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    });
+
+    it('checks the rate limit keyed by request IP before importing', async () => {
+      mockCallUpListService.importCallUpList.mockResolvedValue(sampleImportResult('evt-3'));
+
+      await app.inject({
+        method: 'POST', url: '/race-events/import/callup', headers,
+        payload: { fileData: Buffer.from('fake xlsx').toString('base64') },
+      });
+
+      expect(mockEnforceRateLimit).toHaveBeenCalledWith(
+        expect.any(String),
+        100,
+        300,
+      );
+    });
+
+    it('returns 429 and skips the import when the rate limit is exceeded', async () => {
+      const { TooManyRequestsError } = await import('../../../lib/errors.js');
+      mockEnforceRateLimit.mockRejectedValueOnce(new TooManyRequestsError());
+
+      const res = await app.inject({
+        method: 'POST', url: '/race-events/import/callup', headers,
+        payload: { fileData: Buffer.from('fake xlsx').toString('base64') },
+      });
+
+      expect(res.statusCode).toBe(429);
+      expect(mockCallUpListService.importCallUpList).not.toHaveBeenCalled();
     });
   });
 

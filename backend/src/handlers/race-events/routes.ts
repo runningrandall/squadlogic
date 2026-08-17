@@ -15,6 +15,10 @@ import { ValidationError } from '../../lib/errors.js';
 import type { TeamWaveSchedule } from '../../domain/race-event.js';
 import { setRaceSession, getRaceSession } from '../../lib/race-session-store.js';
 import type { RaceSessionData } from '../../lib/race-session-store.js';
+import { enforceRateLimit } from '../../lib/rate-limiter.js';
+
+const CALLUP_IMPORT_RATE_LIMIT = 100;
+const CALLUP_IMPORT_RATE_WINDOW_SECONDS = 5 * 60;
 
 function createServices() {
   const eventPublisher = new EventBridgePublisher();
@@ -60,6 +64,12 @@ export default async function raceEventRoutes(
       }>,
       reply,
     ) => {
+      await enforceRateLimit(
+        request.ip,
+        CALLUP_IMPORT_RATE_LIMIT,
+        CALLUP_IMPORT_RATE_WINDOW_SECONDS,
+      );
+
       const dto = validate(CallUpListUploadSchema, request.body);
       const buffer = Buffer.from(dto.fileData, 'base64');
 
