@@ -60,8 +60,8 @@ const DEFAULT_WAVES: CreateWaveConfigDto[] = [
     waveName: 'Wave 7 - JD',
     entries: [
       { categoryName: 'Advanced Boys', stageTime: '14:15', startTime: '14:30', laps: 1 },
-      { categoryName: 'Intermediate Boys 8', stageTime: '14:20', startTime: '14:35', laps: 1 },
-      { categoryName: 'Intermediate Boys 7', stageTime: '14:25', startTime: '14:40', laps: 1 },
+      { categoryName: 'Intermediate 8th Grade Boys', stageTime: '14:20', startTime: '14:35', laps: 1 },
+      { categoryName: 'Intermediate 7th Grade Boys', stageTime: '14:25', startTime: '14:40', laps: 1 },
     ],
   },
   {
@@ -75,8 +75,8 @@ const DEFAULT_WAVES: CreateWaveConfigDto[] = [
   {
     waveName: 'Wave 9 - JD',
     entries: [
-      { categoryName: 'Beginner Boys 8', stageTime: '15:35', startTime: '15:50', laps: 1 },
-      { categoryName: 'Beginner Boys 7', stageTime: '15:40', startTime: '15:55', laps: 1 },
+      { categoryName: 'Beginner 8th Grade Boys', stageTime: '15:35', startTime: '15:50', laps: 1 },
+      { categoryName: 'Beginner 7th Grade Boys', stageTime: '15:40', startTime: '15:55', laps: 1 },
     ],
   },
 ];
