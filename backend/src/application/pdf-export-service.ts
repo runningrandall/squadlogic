@@ -1,4 +1,5 @@
 import type { TeamWaveSchedule, WaveGroup, WaveScheduleEntry } from '../domain/race-event.js';
+import { formatTime12Hour } from '../lib/time-format.js';
 
 export interface PdfBranding {
   teamDisplayName: string;
@@ -127,7 +128,7 @@ export class PdfExportService {
     doc.y += 44;
 
     // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athletes
-    const cols = [50, 220, 58, 55, 50, 72, 35];
+    const cols = [80, 180, 60, 56, 54, 70, 40];
     const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', '#'];
     const hdrColors = [
       brand.primaryColor, brand.primaryColor,
@@ -176,10 +177,11 @@ export class PdfExportService {
       const rowVals = [
         wave.waveName,
         categoryList,
-        logistics?.waveMeetingTime ?? '—',
-        logistics?.warmupStart ?? '—',
-        firstCat?.athletes[0]?.logistics?.stagingTime ?? '—',
-        firstCat?.startTime ?? '—',
+        logistics?.waveMeetingTime ? formatTime12Hour(logistics.waveMeetingTime) : '—',
+        logistics?.warmupStart ? formatTime12Hour(logistics.warmupStart) : '—',
+        firstCat?.athletes[0]?.logistics?.stagingTime
+          ? formatTime12Hour(firstCat.athletes[0].logistics.stagingTime) : '—',
+        firstCat?.startTime ? formatTime12Hour(firstCat.startTime) : '—',
         String(athleteCount),
       ];
       x = L;
@@ -229,11 +231,12 @@ export class PdfExportService {
       TIME_COL_COLORS.race,
     ];
     const timeVals = [
-      logistics?.waveMeetingTime ?? '—',
-      logistics?.warmupStart ?? '—',
-      logistics?.warmupEnd ?? '—',
-      firstCat?.athletes[0]?.logistics?.stagingTime ?? '—',
-      firstCat?.startTime ?? '—',
+      logistics?.waveMeetingTime ? formatTime12Hour(logistics.waveMeetingTime) : '—',
+      logistics?.warmupStart ? formatTime12Hour(logistics.warmupStart) : '—',
+      logistics?.warmupEnd ? formatTime12Hour(logistics.warmupEnd) : '—',
+      firstCat?.athletes[0]?.logistics?.stagingTime
+        ? formatTime12Hour(firstCat.athletes[0].logistics.stagingTime) : '—',
+      firstCat?.startTime ? formatTime12Hour(firstCat.startTime) : '—',
     ];
 
     // Label row
@@ -308,8 +311,9 @@ export class PdfExportService {
     doc.fillColor('#222222').fontSize(11).font('Helvetica-Bold');
     doc.text(`${cat.categoryName}  (${cat.athletes.length})`, cx + 8, y + 5, { width: colW - 16, lineBreak: false });
     doc.fillColor('#444444').fontSize(8).font('Helvetica');
+    const stageTime = cat.athletes[0]?.logistics?.stagingTime;
     doc.text(
-      `Stage: ${cat.athletes[0]?.logistics?.stagingTime ?? '—'}   Race: ${cat.startTime}   ${cat.laps ?? '—'} laps`,
+      `Stage: ${stageTime ? formatTime12Hour(stageTime) : '—'}   Race: ${formatTime12Hour(cat.startTime)}   ${cat.laps ?? '—'} laps`,
       cx + 8, y + 20, { width: colW - 16, lineBreak: false },
     );
     y += 32;

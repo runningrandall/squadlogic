@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { formatTime12Hour } from '@/lib/time-format';
 
 type Step = 'upload' | 'team' | 'schedule';
 
@@ -408,7 +409,7 @@ export default function RaceDayPage() {
                     <div className="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 flex justify-between">
                       <span>{cat.categoryName}</span>
                       <span className="text-gray-500">
-                        Stage: {cat.stageTime} &mdash; Start: {cat.startTime} &mdash;{' '}
+                        Stage: {formatTime12Hour(cat.stageTime)} &mdash; Start: {formatTime12Hour(cat.startTime)} &mdash;{' '}
                         {cat.laps ? `${cat.laps} laps` : ''}
                       </span>
                     </div>
@@ -436,12 +437,20 @@ export default function RaceDayPage() {
                             </td>
                             <td className="px-4 py-2">{athlete.callUpNumber ?? '—'}</td>
                             <td className="px-4 py-2">{athlete.bibNumber}</td>
-                            <td className="px-4 py-2">{athlete.logistics?.waveMeetingTime ?? '—'}</td>
-                            <td className="px-4 py-2">{athlete.logistics?.warmupStart ?? '—'}</td>
-                            <td className="px-4 py-2">{athlete.logistics?.warmupEnd ?? '—'}</td>
-                            <td className="px-4 py-2">{athlete.logistics?.stagingTime ?? '—'}</td>
+                            <td className="px-4 py-2">
+                              {athlete.logistics?.waveMeetingTime ? formatTime12Hour(athlete.logistics.waveMeetingTime) : '—'}
+                            </td>
+                            <td className="px-4 py-2">
+                              {athlete.logistics?.warmupStart ? formatTime12Hour(athlete.logistics.warmupStart) : '—'}
+                            </td>
+                            <td className="px-4 py-2">
+                              {athlete.logistics?.warmupEnd ? formatTime12Hour(athlete.logistics.warmupEnd) : '—'}
+                            </td>
+                            <td className="px-4 py-2">
+                              {athlete.logistics?.stagingTime ? formatTime12Hour(athlete.logistics.stagingTime) : '—'}
+                            </td>
                             <td className="px-4 py-2 font-semibold">
-                              {athlete.logistics?.raceStart ?? '—'}
+                              {athlete.logistics?.raceStart ? formatTime12Hour(athlete.logistics.raceStart) : '—'}
                             </td>
                           </tr>
                         ))}

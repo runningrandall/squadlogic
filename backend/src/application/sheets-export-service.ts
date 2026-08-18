@@ -1,5 +1,6 @@
 import type { TeamWaveSchedule } from '../domain/race-event.js';
 import type { SheetsPort, SheetRow, SheetFormatting } from '../ports/sheets-port.js';
+import { formatTime12Hour } from '../lib/time-format.js';
 
 const COLUMN_HEADERS = [
   'Wave',
@@ -66,11 +67,11 @@ export class SheetsExportService {
               `${athlete.firstName} ${athlete.lastName}`,
               athlete.callUpNumber ?? '',
               athlete.bibNumber,
-              logistics?.waveMeetingTime ?? '',
-              logistics?.warmupStart ?? '',
-              logistics?.warmupEnd ?? '',
-              logistics?.stagingTime ?? '',
-              logistics?.raceStart ?? '',
+              logistics?.waveMeetingTime ? formatTime12Hour(logistics.waveMeetingTime) : '',
+              logistics?.warmupStart ? formatTime12Hour(logistics.warmupStart) : '',
+              logistics?.warmupEnd ? formatTime12Hour(logistics.warmupEnd) : '',
+              logistics?.stagingTime ? formatTime12Hour(logistics.stagingTime) : '',
+              logistics?.raceStart ? formatTime12Hour(logistics.raceStart) : '',
               laps ?? '',
             ],
           });
