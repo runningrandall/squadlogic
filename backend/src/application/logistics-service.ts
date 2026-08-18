@@ -13,9 +13,9 @@ export interface LogisticsConfig {
 // Fixed race-day timing constants (business rules, not configurable)
 const WAVE_MEETING_LEAD = 60;   // wave meeting starts this many minutes before the first start
 const MEETING_DURATION  = 10;   // wave meeting lasts 10 minutes → WU start = meeting + 10
-const STAGING_BEFORE    = 20;   // staging opens 20 minutes before race start
+const STAGING_BEFORE    = 15;   // staging opens 15 minutes before race start
 const STAGING_BUFFER    = 5;    // buffer between WU end and staging (5 min transition)
-// WU end = startTime - STAGING_BEFORE - STAGING_BUFFER = startTime - 25
+// WU end = startTime - STAGING_BEFORE - STAGING_BUFFER = startTime - 20
 
 const VARSITY_JVA_PATTERN = /varsity|jv\s*a/i;
 
@@ -51,9 +51,9 @@ export class LogisticsService {
   // Per-wave timing (same for every category within a wave):
   //   waveMeeting  = earliest start in that wave − 60 min
   //   warmupStart  = waveMeeting + 10 min  (after 10-min team meeting)
-  // Per-category timing:
-  //   warmupEnd    = categoryStart − 25 min (staging − 5 min buffer)
-  //   stagingTime  = categoryStart − 20 min
+  // Per-category timing (each category has its own start time):
+  //   stagingTime  = categoryStart − 15 min
+  //   warmupEnd    = stagingTime − 5 min (bathroom/walk-time buffer)
   enrichSchedule(schedule: TeamWaveSchedule): TeamWaveSchedule {
     return {
       ...schedule,
