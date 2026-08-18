@@ -127,7 +127,7 @@ export class PdfExportService {
     doc.y += 44;
 
     // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athletes
-    const cols = [55, 185, 65, 65, 65, 65, 40];
+    const cols = [50, 220, 58, 55, 50, 72, 35];
     const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', '#'];
     const hdrColors = [
       brand.primaryColor, brand.primaryColor,
@@ -151,14 +151,21 @@ export class PdfExportService {
     }
     doc.y = thY + HDR_H;
 
-    // Data rows — tall enough for two-line category lists
-    const ROW_H = 36;
+    // Data rows — height grows to fit however many lines the category list wraps to
+    const ROW_FONT_SIZE = 11;
+    const ROW_V_PAD = 20;
+    const ROW_MIN_H = 42;
     let colorIdx = 0;
     for (const wave of schedule.waves) {
       const firstCat = wave.categories[0];
       const logistics = firstCat?.athletes[0]?.logistics;
       const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
       const athleteCount = wave.categories.reduce((s, c) => s + c.athletes.length, 0);
+
+      doc.font('Helvetica-Bold').fontSize(ROW_FONT_SIZE);
+      const categoryH = doc.heightOfString(categoryList, { width: cols[1] - 8 });
+      const ROW_H = Math.max(ROW_MIN_H, categoryH + ROW_V_PAD);
+
       const rowY = doc.y;
       const rowColor = ROW_COLORS[colorIdx % ROW_COLORS.length];
       colorIdx++;
@@ -181,8 +188,8 @@ export class PdfExportService {
         const centered = i >= 2;
         // Only the category column (i=1) may wrap; all others are single-line values
         const allowWrap = i === 1;
-        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
-        doc.text(rowVals[i], x + 4, rowY + 9, {
+        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(ROW_FONT_SIZE);
+        doc.text(rowVals[i], x + 4, rowY + (allowWrap ? 8 : (ROW_H - ROW_FONT_SIZE) / 2 - 2), {
           width: cols[i] - 8,
           lineBreak: allowWrap,
           align: centered ? 'center' : 'left',
