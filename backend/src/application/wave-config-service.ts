@@ -21,15 +21,15 @@ const DEFAULT_WAVES: CreateWaveConfigDto[] = [
   {
     waveName: 'Wave 2 - HS',
     entries: [
-      { categoryName: 'JV A Boys', stageTime: '08:35', startTime: '08:55', laps: 2 },
+      { categoryName: 'JV A Boys', stageTime: '08:35', startTime: '08:55', laps: 3 },
       { categoryName: 'Freshman A Boys', stageTime: '08:40', startTime: '09:00', laps: 2 },
     ],
   },
   {
     waveName: 'Wave 3 - HS',
     entries: [
-      { categoryName: 'Varsity Boys', stageTime: '09:50', startTime: '10:10', laps: 3 },
-      { categoryName: 'Varsity Girls', stageTime: '09:55', startTime: '10:15', laps: 2 },
+      { categoryName: 'Varsity Boys', stageTime: '09:50', startTime: '10:10', laps: 4 },
+      { categoryName: 'Varsity Girls', stageTime: '09:55', startTime: '10:15', laps: 3 },
     ],
   },
   {
