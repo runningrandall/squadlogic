@@ -57,6 +57,33 @@ describe('PdfExportService.generatePocketPdf', () => {
     }
   });
 
+  it('labels a panel spanning multiple waves as "Wave 7 and 9", not "Multiple Waves"', async () => {
+    const buffer = await service.generatePocketPdf(schedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('Wave 7 and 9');
+    expect(text).not.toContain('Multiple Waves');
+  });
+
+  it('fills a panel densely (25+ athletes) instead of spreading entries evenly across all panels', async () => {
+    const denseWave = {
+      waveName: 'Wave 1 - HS',
+      categories: [
+        {
+          categoryName: 'JV B Boys',
+          stageTime: '07:45',
+          startTime: '08:00',
+          laps: 2,
+          athletes: Array.from({ length: 60 }, (_, i) => mkAthlete(`First${i}`, `Last${i}`, String(i))),
+        },
+      ],
+    };
+    const denseSchedule: TeamWaveSchedule = { ...schedule, waves: [denseWave] };
+    const buffer = await service.generatePocketPdf(denseSchedule);
+    // 60 athletes at ~25/panel should need 3 panels (one sheet, no spill), not spread
+    // thin across all 8 panels of a sheet.
+    expect(await getPdfPageCount(buffer)).toBe(2);
+  });
+
   it('spills onto additional sheets when one team has a very large roster', async () => {
     const bigWave = {
       waveName: 'Wave 1 - HS',
