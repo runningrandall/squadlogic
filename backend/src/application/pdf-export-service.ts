@@ -455,14 +455,11 @@ export class PdfExportService {
 
     // N independent columns (N chosen to use the full page width, up to one per
     // category) — each flows downward on its own, no height coupling between neighbours.
+    // The packing math in generateSchedulePdf never admits a wave whose own banner+timing
+    // block would start this close to the page bottom, so no page-overflow guard is needed here.
     const COL_W = PdfExportService.CAT_COL_W; // name (156) + staging # (40) + bib (56) + 8px padding
     const COL_GAP = PdfExportService.CAT_COL_GAP;
     const numCols = this.waveColumnCount(wave, pm);
-
-    if (doc.y > pm.PH - 80) {
-      doc.addPage();
-      doc.y = pm.HEADER_H + 10;
-    }
 
     const colStartY = doc.y;
     const colYs = new Array(numCols).fill(colStartY);

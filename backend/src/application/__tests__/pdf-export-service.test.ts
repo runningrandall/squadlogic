@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { PdfExportService } from '../pdf-export-service.js';
 import { getPdfPageCount } from './pdf-test-utils.js';
 import type { TeamWaveSchedule } from '../../domain/race-event.js';
@@ -109,6 +109,42 @@ describe('PdfExportService', () => {
   it('falls back to teamName in header when teamDisplayName is empty', async () => {
     const buffer = await service.generatePdf(schedule, { teamDisplayName: '' });
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
+  describe('logo embedding', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('fetches and embeds the logo when logoUrl resolves successfully', async () => {
+      // Minimal valid 1x1 PNG — pdfkit's doc.image() needs real image bytes to embed.
+      const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+      const pngBytes = Buffer.from(pngBase64, 'base64');
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: async () => pngBytes.buffer.slice(pngBytes.byteOffset, pngBytes.byteOffset + pngBytes.byteLength),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const buffer = await service.generatePdf(schedule, {
+        logoUrl: 'https://example.com/logo.png',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith('https://example.com/logo.png', expect.anything());
+      expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    });
+
+    it('generates without a logo when the fetch fails', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+      const buffer = await service.generatePdf(schedule, { logoUrl: 'https://example.com/missing.png' });
+      expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    });
+
+    it('generates without a logo when the fetch throws', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+      const buffer = await service.generatePdf(schedule, { logoUrl: 'https://example.com/error.png' });
+      expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    });
   });
 
   it('renders athletes without logistics (uses empty string fallback)', async () => {
