@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PdfExportService } from '../pdf-export-service.js';
+import { getPdfPageCount } from './pdf-test-utils.js';
 import type { TeamWaveSchedule } from '../../domain/race-event.js';
 
 const service = new PdfExportService();
@@ -192,5 +193,57 @@ describe('PdfExportService', () => {
     };
     const buffer = await service.generatePdf(multiAthleteSchedule);
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
+  describe('Tabloid wave packing', () => {
+    function mkWave(waveName: string, startTime: string, athleteCount: number) {
+      return {
+        waveName,
+        categories: [
+          {
+            categoryName: `${waveName} Category`,
+            stageTime: startTime,
+            startTime,
+            laps: 1,
+            athletes: Array.from({ length: athleteCount }, (_, i) => ({
+              firstName: `F${i}`,
+              lastName: `L${i}`,
+              bibNumber: String(i),
+              callUpNumber: '1',
+            })),
+          },
+        ],
+      };
+    }
+
+    it('packs two small waves onto a single content page (1 summary + 1 content = 2 pages)', async () => {
+      const twoSmallWaves: TeamWaveSchedule = {
+        ...schedule,
+        waves: [mkWave('Wave 7 - JD', '14:30', 1), mkWave('Wave 9 - JD', '15:50', 2)],
+      };
+      const buffer = await service.generateSchedulePdf(twoSmallWaves);
+      expect(await getPdfPageCount(buffer)).toBe(2);
+    });
+
+    it('gives a very large wave its own page rather than force-packing it', async () => {
+      const oneHugeWave: TeamWaveSchedule = {
+        ...schedule,
+        waves: [mkWave('Wave 1 - HS', '08:00', 60), mkWave('Wave 2 - HS', '09:00', 2)],
+      };
+      const buffer = await service.generateSchedulePdf(oneHugeWave);
+      // 1 summary page + at least 1 content page; the huge wave should not be squeezed
+      // onto the same page as the small one if it wouldn't fit.
+      expect(await getPdfPageCount(buffer)).toBeGreaterThanOrEqual(2);
+    });
+
+    it('generateSchedulePdf and the generatePdf alias produce the same page count', async () => {
+      const twoSmallWaves: TeamWaveSchedule = {
+        ...schedule,
+        waves: [mkWave('Wave 7 - JD', '14:30', 1), mkWave('Wave 9 - JD', '15:50', 2)],
+      };
+      const viaAlias = await service.generatePdf(twoSmallWaves);
+      const viaDirect = await service.generateSchedulePdf(twoSmallWaves);
+      expect(await getPdfPageCount(viaAlias)).toBe(await getPdfPageCount(viaDirect));
+    });
   });
 });

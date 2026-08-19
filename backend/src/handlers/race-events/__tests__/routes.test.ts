@@ -10,7 +10,13 @@ const mockCallUpListService = {
 const mockWaveConfigService = { getConfig: vi.fn(), updateWave: vi.fn(), seedDefaults: vi.fn() };
 const mockScheduleService = { generateSchedule: vi.fn() };
 const mockLogisticsService = { calculateDefaults: vi.fn(), enrichSchedule: vi.fn() };
-const mockPdfService = { generatePdf: vi.fn(), generateFilename: vi.fn() };
+const mockPdfService = {
+  generatePdf: vi.fn(),
+  generateSchedulePdf: vi.fn(),
+  generateRosterPdf: vi.fn(),
+  generatePocketPdf: vi.fn(),
+  generateFilename: vi.fn(),
+};
 const mockBrandingService = { getBranding: vi.fn(), createOrUpdateBranding: vi.fn(), getDefaults: vi.fn() };
 
 vi.mock('../../../adapters/eventbridge-publisher.js', () => ({ EventBridgePublisher: vi.fn() }));
@@ -249,7 +255,7 @@ describe('Race event routes', () => {
       mockWaveConfigService.getConfig.mockResolvedValue([]);
       mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
       mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
-      mockPdfService.generatePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
+      mockPdfService.generateSchedulePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
       mockPdfService.generateFilename.mockReturnValue('Team_A_2026-08-02_schedule.pdf');
 
       const res = await app.inject({
@@ -266,7 +272,7 @@ describe('Race event routes', () => {
       mockWaveConfigService.getConfig.mockResolvedValue([]);
       mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
       mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
-      mockPdfService.generatePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
+      mockPdfService.generateSchedulePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
       mockPdfService.generateFilename.mockReturnValue('Team_A_2026-08-02_schedule.pdf');
 
       const res = await app.inject({
@@ -282,7 +288,7 @@ describe('Race event routes', () => {
       mockWaveConfigService.getConfig.mockResolvedValue([]);
       mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
       mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
-      mockPdfService.generatePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
+      mockPdfService.generateSchedulePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
       mockPdfService.generateFilename.mockReturnValue('Team_A_schedule.pdf');
 
       const res = await app.inject({
@@ -293,6 +299,44 @@ describe('Race event routes', () => {
       expect(mockScheduleService.generateSchedule).toHaveBeenCalledWith(
         'Team A', sampleParticipants, [], sampleCategorySchedule, 'Test Event', '2026-08-02',
       );
+    });
+
+    it('dispatches to generateRosterPdf when variant is "roster"', async () => {
+      const eventId = await importAndGetEventId('8');
+      mockBrandingService.getBranding.mockResolvedValue(null);
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+      mockPdfService.generateRosterPdf.mockResolvedValue(Buffer.from('%PDF-1.4 roster'));
+      mockPdfService.generateFilename.mockReturnValue('Team_A_2026-08-02_roster.pdf');
+
+      const res = await app.inject({
+        method: 'POST', url: `/race-events/${eventId}/export/pdf`, headers,
+        payload: { teamName: 'Team A', variant: 'roster' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(mockPdfService.generateRosterPdf).toHaveBeenCalled();
+      expect(mockPdfService.generateSchedulePdf).not.toHaveBeenCalled();
+      expect(mockPdfService.generateFilename).toHaveBeenCalledWith('Team A', '2026-08-02', 'roster');
+    });
+
+    it('dispatches to generatePocketPdf when variant is "pocket"', async () => {
+      const eventId = await importAndGetEventId('9');
+      mockBrandingService.getBranding.mockResolvedValue(null);
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+      mockPdfService.generatePocketPdf.mockResolvedValue(Buffer.from('%PDF-1.4 pocket'));
+      mockPdfService.generateFilename.mockReturnValue('Team_A_2026-08-02_pocket.pdf');
+
+      const res = await app.inject({
+        method: 'POST', url: `/race-events/${eventId}/export/pdf`, headers,
+        payload: { teamName: 'Team A', variant: 'pocket' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(mockPdfService.generatePocketPdf).toHaveBeenCalled();
+      expect(mockPdfService.generateSchedulePdf).not.toHaveBeenCalled();
+      expect(mockPdfService.generateFilename).toHaveBeenCalledWith('Team A', '2026-08-02', 'pocket');
     });
   });
 });

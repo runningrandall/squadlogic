@@ -171,7 +171,7 @@ export default async function raceEventRoutes(
     async (
       request: FastifyRequest<{
         Params: { eventId: string };
-        Body: { teamName: string };
+        Body: { teamName: string; variant?: 'schedule' | 'roster' | 'pocket' };
       }>,
       reply,
     ) => {
@@ -180,7 +180,8 @@ export default async function raceEventRoutes(
         throw new ValidationError('Event not imported.');
       }
 
-      const body = request.body as { teamName: string };
+      const body = request.body as { teamName: string; variant?: 'schedule' | 'roster' | 'pocket' };
+      const variant = body.variant ?? 'schedule';
       const cacheKey = `${request.params.eventId}:${body.teamName}`;
       let enriched = scheduleCache.get(cacheKey);
 
@@ -199,22 +200,24 @@ export default async function raceEventRoutes(
       /* v8 ignore next */
       const userId = request.userId ?? 'anonymous';
       const branding = await services.branding.getBranding(userId).catch(() => null);
+      const brandingArg = branding ? {
+        teamDisplayName: branding.teamDisplayName,
+        primaryColor: branding.primaryColor,
+        tertiaryColor: branding.tertiaryColor,
+        logoUrl: branding.logoUrl,
+      } : undefined;
 
-      // Generate PDF
-      const pdfBuffer = await services.pdf.generatePdf(
-        enriched,
-        branding ? {
-          teamDisplayName: branding.teamDisplayName,
-          primaryColor: branding.primaryColor,
-          tertiaryColor: branding.tertiaryColor,
-          logoUrl: branding.logoUrl,
-        } : undefined,
-        cached.metadata.eventLocation,
-      );
+      // Generate the requested PDF variant
+      const pdfBuffer = variant === 'roster'
+        ? await services.pdf.generateRosterPdf(enriched, brandingArg, cached.metadata.eventLocation)
+        : variant === 'pocket'
+          ? await services.pdf.generatePocketPdf(enriched, brandingArg)
+          : await services.pdf.generateSchedulePdf(enriched, brandingArg, cached.metadata.eventLocation);
 
       const filename = services.pdf.generateFilename(
         branding?.teamDisplayName ?? body.teamName,
         cached.metadata.eventDate,
+        variant,
       );
 
       return reply

@@ -21,6 +21,7 @@ const mockApi = vi.hoisted(() => ({
   post: vi.fn(),
   put: vi.fn(),
   delete: vi.fn(),
+  postBlob: vi.fn(),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -197,7 +198,20 @@ describe('RaceDayPage', () => {
     expect(screen.getByText('5')).toBeInTheDocument(); // callUpNumber
     expect(screen.getByText('101')).toBeInTheDocument(); // bibNumber
     expect(screen.getByText('Export PDF')).toBeInTheDocument();
+    expect(screen.getByText('Check-In Roster')).toBeInTheDocument();
+    expect(screen.getByText('Pocket Sheet')).toBeInTheDocument();
     expect(screen.getByText('Export Sheets')).toBeInTheDocument();
+
+    // Exporting the roster posts the "roster" variant and downloads the returned blob
+    mockApi.postBlob.mockResolvedValueOnce(new Blob(['%PDF-1.4'], { type: 'application/pdf' }));
+    fireEvent.click(screen.getByText('Check-In Roster'));
+
+    await waitFor(() => {
+      expect(mockApi.postBlob).toHaveBeenCalledWith(
+        expect.stringContaining('/export/pdf'),
+        expect.objectContaining({ teamName: 'Brighton', variant: 'roster' }),
+      );
+    });
   });
 
   it('resets to upload step when Start Over is clicked', async () => {

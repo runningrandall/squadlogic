@@ -138,22 +138,27 @@ export default function RaceDayPage() {
     }
   }
 
-  async function handleExportPdf() {
+  function downloadBlob(blob: Blob, filename: string) {
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
+  async function handleExportPdf(variant: 'schedule' | 'roster' | 'pocket' = 'schedule') {
     if (!importResult) return;
     setIsExporting(true);
     try {
       const blob = await api.postBlob(
         `/race-events/${importResult.eventId}/export/pdf`,
-        { teamName: selectedTeam },
+        { teamName: selectedTeam, variant },
       );
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = `${selectedTeam.replace(/\s+/g, '_')}_${importResult.eventDate}_schedule.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      const filename = `${selectedTeam.replace(/\s+/g, '_')}_${importResult.eventDate}_${variant}.pdf`;
+      downloadBlob(blob, filename);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'PDF export failed');
     } finally {
@@ -341,11 +346,25 @@ export default function RaceDayPage() {
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={handleExportPdf}
+                  onClick={() => handleExportPdf('schedule')}
                   disabled={isExporting}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 text-sm font-medium"
                 >
                   {isExporting ? 'Exporting...' : 'Export PDF'}
+                </button>
+                <button
+                  onClick={() => handleExportPdf('roster')}
+                  disabled={isExporting}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 text-sm font-medium"
+                >
+                  {isExporting ? 'Exporting...' : 'Check-In Roster'}
+                </button>
+                <button
+                  onClick={() => handleExportPdf('pocket')}
+                  disabled={isExporting}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 text-sm font-medium"
+                >
+                  {isExporting ? 'Exporting...' : 'Pocket Sheet'}
                 </button>
                 <button
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 text-sm font-medium"

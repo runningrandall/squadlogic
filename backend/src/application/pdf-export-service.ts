@@ -30,14 +30,54 @@ const TIME_COL_COLORS = {
   athletes:'#B0BEC5',
 };
 
-const L = 36;          // left margin
-const PW = 612;        // page width
-const PH = 792;        // page height
-const CW = PW - L * 2; // content width = 540
-const HEADER_H = 52;   // compact page header height
+// Page geometry — multiple exports use different physical page sizes, so this is
+// threaded through render methods rather than hardcoded as module constants.
+interface PageMetrics {
+  L: number;       // left margin
+  PW: number;      // page width
+  PH: number;      // page height
+  CW: number;      // content width (PW - L*2)
+  HEADER_H: number; // compact page header height
+}
+
+const TABLOID_LANDSCAPE: PageMetrics = { L: 36, PW: 1224, PH: 792, CW: 1152, HEADER_H: 52 };
+
+interface RosterRow {
+  name: string;
+  firstName: string;
+  lastName: string;
+  categoryName: string;
+  waveMeetingTime: string;
+  stagingTime: string;
+  raceStart: string;
+}
+
+interface PocketEntry {
+  waveName: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  categoryName: string;
+  startTime: string;
+}
+
+// Pocket printout panel geometry: a Letter sheet folded in half twice (quarter-fold)
+// unfolds into a 2x2 grid of these panels — final folded size ~4.25"x5.5".
+const PANEL_W = 306;
+const PANEL_H = 396;
+const PANELS_PER_SHEET = 4; // per side; 8 total per physical (double-sided) sheet
 
 export class PdfExportService {
+  // ─── Wave-detail schedule export (Tabloid, up to 2 waves per page) ────────
   async generatePdf(
+    schedule: TeamWaveSchedule,
+    branding?: Partial<PdfBranding>,
+    eventLocation?: string,
+  ): Promise<Buffer> {
+    return this.generateSchedulePdf(schedule, branding, eventLocation);
+  }
+
+  async generateSchedulePdf(
     schedule: TeamWaveSchedule,
     branding?: Partial<PdfBranding>,
     eventLocation?: string,
@@ -45,6 +85,7 @@ export class PdfExportService {
     const PDFDocument = (await import('pdfkit')).default;
     const brand = { ...DEFAULT_BRANDING, ...branding };
     const logoBuffer = await this.fetchLogoBuffer(brand.logoUrl);
+    const pm = TABLOID_LANDSCAPE;
 
     // Sort categories within each wave by start time (earliest first) for consistent print order.
     const sorted: TeamWaveSchedule = {
@@ -56,79 +97,206 @@ export class PdfExportService {
     };
 
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ size: 'LETTER', margins: { top: 0, bottom: 0, left: 0, right: 0 } });
+      const doc = new PDFDocument({
+        size: 'TABLOID', layout: 'landscape',
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      });
       const chunks: Buffer[] = [];
       doc.on('data', (c: Buffer) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
       // Page 1: summary
-      this.renderPageHeader(doc, sorted, brand, logoBuffer, eventLocation);
-      this.renderSummary(doc, sorted, brand);
+      this.renderPageHeader(pm, doc, sorted, brand, logoBuffer, eventLocation);
+      this.renderSummary(pm, doc, sorted, brand);
 
-      // Subsequent pages: one per wave
-      for (const wave of sorted.waves) {
+      // Subsequent pages: waves packed up to 2-per-page based on measured height
+      const avail = pm.PH - pm.HEADER_H - 20;
+      let pageWaves: WaveGroup[] = [];
+      let usedH = 0;
+
+      const flushPage = () => {
+        if (pageWaves.length === 0) return;
         doc.addPage();
-        this.renderPageHeader(doc, sorted, brand, logoBuffer, eventLocation);
-        this.renderWave(doc, wave, brand);
+        this.renderPageHeader(pm, doc, sorted, brand, logoBuffer, eventLocation);
+        for (const w of pageWaves) {
+          this.renderWave(pm, doc, w, brand);
+          doc.y += 20;
+        }
+        pageWaves = [];
+        usedH = 0;
+      };
+
+      for (const wave of sorted.waves) {
+        const h = this.measureWaveHeight(wave, pm);
+        if (pageWaves.length > 0 && (usedH + h > avail || pageWaves.length >= 2)) {
+          flushPage();
+        }
+        pageWaves.push(wave);
+        usedH += h + 20;
+      }
+      flushPage();
+
+      doc.end();
+    });
+  }
+
+  // ─── Check-in roster export (Tabloid, forced onto one page) ───────────────
+  async generateRosterPdf(
+    schedule: TeamWaveSchedule,
+    branding?: Partial<PdfBranding>,
+    eventLocation?: string,
+  ): Promise<Buffer> {
+    const PDFDocument = (await import('pdfkit')).default;
+    const brand = { ...DEFAULT_BRANDING, ...branding };
+    const logoBuffer = await this.fetchLogoBuffer(brand.logoUrl);
+    const pm = TABLOID_LANDSCAPE;
+
+    const rows: RosterRow[] = schedule.waves.flatMap((wave) =>
+      wave.categories.flatMap((cat) =>
+        cat.athletes.map((a) => ({
+          name: `${a.lastName}, ${a.firstName}`,
+          firstName: a.firstName,
+          lastName: a.lastName,
+          categoryName: cat.categoryName,
+          waveMeetingTime: a.logistics?.waveMeetingTime ?? '',
+          stagingTime: a.logistics?.stagingTime ?? '',
+          raceStart: a.logistics?.raceStart ?? '',
+        })),
+      ),
+    );
+    rows.sort((x, y) =>
+      x.firstName.localeCompare(y.firstName) || x.lastName.localeCompare(y.lastName),
+    );
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({
+        size: 'TABLOID', layout: 'landscape',
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      });
+      const chunks: Buffer[] = [];
+      doc.on('data', (c: Buffer) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      this.renderPageHeader(pm, doc, schedule, brand, logoBuffer, eventLocation);
+      this.renderRosterTable(pm, doc, rows, brand);
+
+      doc.end();
+    });
+  }
+
+  // ─── Pocket printout export (Letter, quarter-fold, double-sided) ──────────
+  async generatePocketPdf(
+    schedule: TeamWaveSchedule,
+    branding?: Partial<PdfBranding>,
+  ): Promise<Buffer> {
+    const PDFDocument = (await import('pdfkit')).default;
+    const brand = { ...DEFAULT_BRANDING, ...branding };
+
+    const entries = this.buildPocketEntries(schedule);
+    const rowHFor = (perPanel: number) => (PANEL_H - 44) / Math.max(perPanel, 1);
+
+    let sheets = 1;
+    while (
+      entries.length > 0 &&
+      rowHFor(Math.ceil(entries.length / (sheets * PANELS_PER_SHEET * 2))) < 9 &&
+      sheets < 4
+    ) {
+      sheets++;
+    }
+    const totalPanels = sheets * PANELS_PER_SHEET * 2;
+    const perPanel = entries.length > 0 ? Math.ceil(entries.length / totalPanels) : 0;
+
+    const panels: PocketEntry[][] = [];
+    for (let i = 0; i < totalPanels; i++) {
+      panels.push(entries.slice(i * perPanel, (i + 1) * perPanel));
+    }
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({
+        size: 'LETTER',
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      });
+      const chunks: Buffer[] = [];
+      doc.on('data', (c: Buffer) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      let panelIdx = 0;
+      for (let s = 0; s < sheets; s++) {
+        if (s > 0) doc.addPage();
+        this.renderPocketPage(doc, panels.slice(panelIdx, panelIdx + PANELS_PER_SHEET), brand);
+        panelIdx += PANELS_PER_SHEET;
+        doc.addPage();
+        this.renderPocketPage(doc, panels.slice(panelIdx, panelIdx + PANELS_PER_SHEET), brand);
+        panelIdx += PANELS_PER_SHEET;
       }
 
       doc.end();
     });
   }
 
-  generateFilename(teamName: string, eventDate: string): string {
+  generateFilename(
+    teamName: string,
+    eventDate: string,
+    variant: 'schedule' | 'roster' | 'pocket' = 'schedule',
+  ): string {
     const sanitized = teamName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
-    return `${sanitized}_${eventDate}_schedule.pdf`;
+    return `${sanitized}_${eventDate}_${variant}.pdf`;
   }
 
   // ─── Compact page header (repeats on every page) ──────────────────────────
   private renderPageHeader(
+    pm: PageMetrics,
     doc: PDFKit.PDFDocument,
     schedule: TeamWaveSchedule,
     brand: PdfBranding,
     logoBuffer: Buffer | null,
     eventLocation?: string,
   ): void {
-    doc.rect(0, 0, PW, HEADER_H).fill(brand.primaryColor);
+    doc.rect(0, 0, pm.PW, pm.HEADER_H).fill(brand.primaryColor);
 
     const logoW = 46;
     const logoGap = logoBuffer ? logoW + 8 : 0;
 
     if (logoBuffer) {
       try {
-        doc.image(logoBuffer, L, 7, { height: 38, fit: [logoW, 38] });
+        doc.image(logoBuffer, pm.L, 7, { height: 38, fit: [logoW, 38] });
       /* v8 ignore next */
       } catch { /* skip if image format unsupported */ }
     }
 
     const displayName = brand.teamDisplayName || schedule.teamName;
-    const textX = L + logoGap;
-    const textW = CW - logoGap;
+    const textX = pm.L + logoGap;
+    const textW = pm.CW - logoGap;
 
     doc.fillColor('#FFFFFF').fontSize(18).font('Helvetica-Bold');
-    doc.text(displayName, textX, 10, { width: textW, lineBreak: false });
+    this.oneLine(doc, displayName, textX, 10, textW);
 
     doc.fontSize(8).font('Helvetica');
     const subtitle = [schedule.eventName, schedule.eventDate, eventLocation]
       .filter(Boolean).join('  •  ');
-    doc.text(subtitle, textX, 34, { width: textW, lineBreak: false });
+    this.oneLine(doc, subtitle, textX, 34, textW);
 
-    doc.y = HEADER_H + 10;
+    doc.y = pm.HEADER_H + 10;
   }
 
   // ─── Summary page ─────────────────────────────────────────────────────────
-  private renderSummary(doc: PDFKit.PDFDocument, schedule: TeamWaveSchedule, brand: PdfBranding): void {
+  private renderSummary(pm: PageMetrics, doc: PDFKit.PDFDocument, schedule: TeamWaveSchedule, brand: PdfBranding): void {
     // Large title
     doc.fillColor('#000000').fontSize(28).font('Helvetica-Bold');
-    doc.text('RIDER PREP &', L, doc.y, { width: CW, align: 'center', lineBreak: false });
+    doc.text('RIDER PREP &', pm.L, doc.y, { width: pm.CW, align: 'center', lineBreak: false });
     doc.y += 34;
     doc.fontSize(28).font('Helvetica-Bold');
-    doc.text('RACE TIMES', L, doc.y, { width: CW, align: 'center', lineBreak: false });
+    doc.text('RACE TIMES', pm.L, doc.y, { width: pm.CW, align: 'center', lineBreak: false });
     doc.y += 44;
 
-    // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athletes
-    const cols = [80, 180, 60, 56, 54, 70, 40];
+    // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athletes.
+    // Fixed columns take up their share; Category takes whatever content width remains.
+    const fixedCols = [80, 60, 56, 54, 70, 40];
+    const categoryColW = pm.CW - fixedCols.reduce((s, w) => s + w, 0);
+    const cols = [fixedCols[0], categoryColW, ...fixedCols.slice(1)];
     const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', '#'];
     const hdrColors = [
       brand.primaryColor, brand.primaryColor,
@@ -141,7 +309,7 @@ export class PdfExportService {
     // Header row — each column gets its own accent color
     const HDR_H = 28;
     const thY = doc.y;
-    let x = L;
+    let x = pm.L;
     for (let i = 0; i < hdrs.length; i++) {
       doc.rect(x, thY, cols[i], HDR_H).fill(hdrColors[i]);
       const txtColor = i < 2 ? '#FFFFFF' : '#000000';
@@ -171,7 +339,7 @@ export class PdfExportService {
       const rowColor = ROW_COLORS[colorIdx % ROW_COLORS.length];
       colorIdx++;
 
-      doc.rect(L, rowY, tableW, ROW_H).fill(rowColor);
+      doc.rect(pm.L, rowY, tableW, ROW_H).fill(rowColor);
       doc.fillColor('#000000');
 
       const rowVals = [
@@ -184,18 +352,20 @@ export class PdfExportService {
         firstCat?.startTime ? formatTime12Hour(firstCat.startTime) : '—',
         String(athleteCount),
       ];
-      x = L;
+      x = pm.L;
       for (let i = 0; i < rowVals.length; i++) {
         const bold = i < 2;
         const centered = i >= 2;
-        // Only the category column (i=1) may wrap; all others are single-line values
+        // Only the category column (i=1) may wrap (ROW_H above is sized to fit it);
+        // every other column is forced to a single truncated line.
         const allowWrap = i === 1;
         doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(ROW_FONT_SIZE);
-        doc.text(rowVals[i], x + 4, rowY + (allowWrap ? 8 : (ROW_H - ROW_FONT_SIZE) / 2 - 2), {
-          width: cols[i] - 8,
-          lineBreak: allowWrap,
-          align: centered ? 'center' : 'left',
-        });
+        const ty = rowY + (allowWrap ? 8 : (ROW_H - ROW_FONT_SIZE) / 2 - 2);
+        if (allowWrap) {
+          doc.text(rowVals[i], x + 4, ty, { width: cols[i] - 8, align: centered ? 'center' : 'left' });
+        } else {
+          this.oneLine(doc, rowVals[i], x + 4, ty, cols[i] - 8, centered ? 'center' : 'left');
+        }
         x += cols[i];
       }
       doc.y = rowY + ROW_H;
@@ -205,25 +375,47 @@ export class PdfExportService {
     doc.fontSize(7).fillColor('#999999').font('Helvetica');
     doc.text(
       `Generated by Switchback  •  ${schedule.totalAthletes} athletes  •  ${schedule.waves.length} waves`,
-      L, PH - 26, { lineBreak: false },
+      pm.L, pm.PH - 26, { lineBreak: false },
     );
   }
 
-  // ─── Individual wave page ─────────────────────────────────────────────────
-  private renderWave(doc: PDFKit.PDFDocument, wave: WaveGroup, brand: PdfBranding): void {
-    const tableW = CW;
+  // Category column width used by both the measurement pass and renderWave — kept in
+  // sync so the packing estimate matches what actually gets drawn.
+  private static readonly CAT_COL_W = 260;
+  private static readonly CAT_COL_GAP = 20;
+
+  private waveColumnCount(wave: WaveGroup, pm: PageMetrics): number {
+    const perCol = PdfExportService.CAT_COL_W + PdfExportService.CAT_COL_GAP;
+    const maxCols = Math.max(1, Math.floor((pm.CW + PdfExportService.CAT_COL_GAP) / perCol));
+    return Math.max(1, Math.min(wave.categories.length, maxCols));
+  }
+
+  // ─── Pure height estimate for a wave, used to pack up to 2 waves per page ─
+  private measureWaveHeight(wave: WaveGroup, pm: PageMetrics): number {
+    const TIMING_BLOCK = 32 + 15 + 26; // banner + label row + value row
+    const numCols = this.waveColumnCount(wave, pm);
+    const colHeights = new Array(numCols).fill(0);
+    wave.categories.forEach((c, i) => {
+      colHeights[i % numCols] += 32 + 14 + 13 * c.athletes.length + 8;
+    });
+    return TIMING_BLOCK + Math.max(...colHeights, 0);
+  }
+
+  // ─── Individual wave block (banner + timing + category columns) ───────────
+  private renderWave(pm: PageMetrics, doc: PDFKit.PDFDocument, wave: WaveGroup, brand: PdfBranding): void {
+    const tableW = pm.CW;
     const firstCat = wave.categories[0];
     const logistics = firstCat?.athletes[0]?.logistics;
 
     // Wave name banner
     const waveY = doc.y;
-    doc.rect(L, waveY, tableW, 32).fill(brand.primaryColor);
+    doc.rect(pm.L, waveY, tableW, 32).fill(brand.primaryColor);
     doc.fillColor('#FFFFFF').fontSize(17).font('Helvetica-Bold');
-    doc.text(wave.waveName, L + 10, waveY + 8, { width: tableW - 20, lineBreak: false });
+    this.oneLine(doc, wave.waveName, pm.L + 10, waveY + 8, tableW - 20);
     doc.y = waveY + 32;
 
     // Timing block: label row + value row spanning full width
-    const timeCols = [CW / 5, CW / 5, CW / 5, CW / 5, CW / 5];
+    const timeCols = [pm.CW / 5, pm.CW / 5, pm.CW / 5, pm.CW / 5, pm.CW / 5];
     const timeLabels = ['WAVE MEETING', 'WU START', 'WU END', 'STAGE', 'RACE START'];
     const timeColBg = [
       TIME_COL_COLORS.waveMtg, TIME_COL_COLORS.warmUp,
@@ -241,55 +433,47 @@ export class PdfExportService {
 
     // Label row
     const lblY = doc.y;
-    let x = L;
+    let x = pm.L;
     for (let i = 0; i < timeLabels.length; i++) {
       doc.rect(x, lblY, timeCols[i], 15).fill(timeColBg[i]);
       doc.fillColor('#000000').fontSize(7).font('Helvetica-Bold');
-      doc.text(timeLabels[i], x + 4, lblY + 4, { width: timeCols[i] - 8, lineBreak: false });
+      this.oneLine(doc, timeLabels[i], x + 4, lblY + 4, timeCols[i] - 8);
       x += timeCols[i];
     }
     doc.y = lblY + 15;
 
     // Value row
     const valY = doc.y;
-    x = L;
+    x = pm.L;
     for (let i = 0; i < timeVals.length; i++) {
       doc.rect(x, valY, timeCols[i], 22).fill(i % 2 === 0 ? '#FFFFFF' : brand.tertiaryColor);
       doc.fillColor('#000000').fontSize(13).font('Helvetica-Bold');
-      doc.text(timeVals[i], x + 4, valY + 4, { width: timeCols[i] - 8, lineBreak: false });
+      this.oneLine(doc, timeVals[i], x + 4, valY + 4, timeCols[i] - 8);
       x += timeCols[i];
     }
     doc.y = valY + 26;
 
-    // Two independent columns: even-indexed categories on left, odd on right.
-    // Each column flows downward on its own — no height coupling between neighbours.
-    const COL_W = 260; // name (156) + staging # (40) + bib (56) + 8px padding
-    const COL_GAP = 20;
-    const R = L + COL_W + COL_GAP;
+    // N independent columns (N chosen to use the full page width, up to one per
+    // category) — each flows downward on its own, no height coupling between neighbours.
+    const COL_W = PdfExportService.CAT_COL_W; // name (156) + staging # (40) + bib (56) + 8px padding
+    const COL_GAP = PdfExportService.CAT_COL_GAP;
+    const numCols = this.waveColumnCount(wave, pm);
 
-    const leftCats = wave.categories.filter((_, i) => i % 2 === 0);
-    const rightCats = wave.categories.filter((_, i) => i % 2 === 1);
-
-    if (doc.y > PH - 80) {
+    if (doc.y > pm.PH - 80) {
       doc.addPage();
-      doc.y = HEADER_H + 10;
+      doc.y = pm.HEADER_H + 10;
     }
 
     const colStartY = doc.y;
-    let leftY = colStartY;
-    let rightY = colStartY;
+    const colYs = new Array(numCols).fill(colStartY);
 
-    for (const cat of leftCats) {
-      leftY = this.renderCategoryBlock(doc, cat, L, leftY, COL_W, brand);
-      leftY += 8;
-    }
+    wave.categories.forEach((cat, i) => {
+      const col = i % numCols;
+      const cx = pm.L + col * (COL_W + COL_GAP);
+      colYs[col] = this.renderCategoryBlock(doc, cat, cx, colYs[col], COL_W, brand) + 8;
+    });
 
-    for (const cat of rightCats) {
-      rightY = this.renderCategoryBlock(doc, cat, R, rightY, COL_W, brand);
-      rightY += 8;
-    }
-
-    doc.y = Math.max(leftY, rightY);
+    doc.y = Math.max(...colYs);
   }
 
   // ─── Single category block rendered at absolute position (returns end y) ──
@@ -309,21 +493,22 @@ export class PdfExportService {
     // Two-line category header
     doc.rect(cx, y, colW, 32).fill(brand.tertiaryColor);
     doc.fillColor('#222222').fontSize(11).font('Helvetica-Bold');
-    doc.text(`${cat.categoryName}  (${cat.athletes.length})`, cx + 8, y + 5, { width: colW - 16, lineBreak: false });
+    this.oneLine(doc, `${cat.categoryName}  (${cat.athletes.length})`, cx + 8, y + 5, colW - 16);
     doc.fillColor('#444444').fontSize(8).font('Helvetica');
     const stageTime = cat.athletes[0]?.logistics?.stagingTime;
-    doc.text(
+    this.oneLine(
+      doc,
       `Stage: ${stageTime ? formatTime12Hour(stageTime) : '—'}   Race: ${formatTime12Hour(cat.startTime)}   ${cat.laps ?? '—'} laps`,
-      cx + 8, y + 20, { width: colW - 16, lineBreak: false },
+      cx + 8, y + 20, colW - 16,
     );
     y += 32;
 
     // Column headers
     doc.rect(cx, y, colW, 14).fill('#E0E0E0');
     doc.fillColor('#555555').fontSize(7).font('Helvetica-Bold');
-    doc.text('ATHLETE', cx + 4, y + 4, { width: nameW - 4, lineBreak: false });
-    doc.text('STG #', cx + nameW + 4, y + 4, { width: stagingW - 4, lineBreak: false });
-    doc.text('BIB', cx + nameW + stagingW + 8, y + 4, { width: bibW - 4, lineBreak: false });
+    this.oneLine(doc, 'ATHLETE', cx + 4, y + 4, nameW - 4);
+    this.oneLine(doc, 'STG #', cx + nameW + 4, y + 4, stagingW - 4);
+    this.oneLine(doc, 'BIB', cx + nameW + stagingW + 8, y + 4, bibW - 4);
     y += 14;
 
     // Athlete rows
@@ -333,13 +518,206 @@ export class PdfExportService {
       }
       doc.fillColor('#000000').fontSize(8).font('Helvetica');
       const a = cat.athletes[r];
-      doc.text(`${a.lastName}, ${a.firstName}`, cx + 4, y + 2, { width: nameW - 4, lineBreak: false });
-      doc.text(a.callUpNumber ?? '—', cx + nameW + 4, y + 2, { width: stagingW - 4, lineBreak: false });
-      doc.text(a.bibNumber, cx + nameW + stagingW + 8, y + 2, { width: bibW - 4, lineBreak: false });
+      this.oneLine(doc, `${a.lastName}, ${a.firstName}`, cx + 4, y + 2, nameW - 4);
+      this.oneLine(doc, a.callUpNumber ?? '—', cx + nameW + 4, y + 2, stagingW - 4);
+      this.oneLine(doc, a.bibNumber, cx + nameW + stagingW + 8, y + 2, bibW - 4);
       y += 13;
     }
 
     return y;
+  }
+
+  // ─── Check-in roster table: N side-by-side columns, sized to fit one page ─
+  private renderRosterTable(
+    pm: PageMetrics,
+    doc: PDFKit.PDFDocument,
+    rows: RosterRow[],
+    brand: PdfBranding,
+  ): void {
+    const titleY = doc.y;
+    doc.fillColor('#000000').fontSize(20).font('Helvetica-Bold');
+    this.oneLine(doc, `CHECK-IN ROSTER  (${rows.length} athletes)`, pm.L, titleY, pm.CW);
+    doc.y = titleY + 30;
+
+    const tableTop = doc.y;
+    const availH = pm.PH - 20 - tableTop;
+    const MAX_COLS = 4;
+    const MIN_ROW_H = 11;
+    const GAP = 16;
+    const HDR_ROW_H = 18;
+
+    let colCount = MAX_COLS;
+    let rowH = MIN_ROW_H;
+    for (let c = 1; c <= MAX_COLS; c++) {
+      const rowsPerCol = Math.ceil(rows.length / c) || 1;
+      const candidateRowH = (availH - HDR_ROW_H) / rowsPerCol;
+      if (candidateRowH >= MIN_ROW_H || c === MAX_COLS) {
+        colCount = c;
+        rowH = Math.max(candidateRowH, 8);
+        break;
+      }
+    }
+
+    const fontSize = Math.max(6, Math.min(9, rowH - 3));
+    const colW = (pm.CW - (colCount - 1) * GAP) / colCount;
+    const rowsPerCol = Math.ceil(rows.length / colCount) || 1;
+
+    // Sub-columns within each roster column, as fractions of colW
+    const SUB_COLS: { key: keyof RosterRow | 'box'; label: string; frac: number; align: 'left' | 'center' }[] = [
+      { key: 'name', label: 'NAME', frac: 0.36, align: 'left' },
+      { key: 'categoryName', label: 'CATEGORY', frac: 0.24, align: 'left' },
+      { key: 'waveMeetingTime', label: 'MTG', frac: 0.11, align: 'center' },
+      { key: 'stagingTime', label: 'STAGE', frac: 0.11, align: 'center' },
+      { key: 'raceStart', label: 'START', frac: 0.11, align: 'center' },
+      { key: 'box', label: 'IN', frac: 0.07, align: 'center' },
+    ];
+    const subW = SUB_COLS.map((sc) => colW * sc.frac);
+
+    for (let c = 0; c < colCount; c++) {
+      const colX = pm.L + c * (colW + GAP);
+      const colRows = rows.slice(c * rowsPerCol, (c + 1) * rowsPerCol);
+
+      // Column header
+      let y = tableTop;
+      doc.rect(colX, y, colW, HDR_ROW_H).fill(brand.primaryColor);
+      doc.fillColor('#FFFFFF').fontSize(7).font('Helvetica-Bold');
+      let hx = colX;
+      for (let s = 0; s < SUB_COLS.length; s++) {
+        this.oneLine(doc, SUB_COLS[s].label, hx + 2, y + 5, subW[s] - 4, SUB_COLS[s].align);
+        hx += subW[s];
+      }
+      y += HDR_ROW_H;
+
+      // Data rows
+      for (let r = 0; r < colRows.length; r++) {
+        const row = colRows[r];
+        if (r % 2 === 1) doc.rect(colX, y, colW, rowH).fill('#F5F5F5');
+
+        let cx = colX;
+        for (let s = 0; s < SUB_COLS.length; s++) {
+          const sc = SUB_COLS[s];
+          if (sc.key === 'box') {
+            const boxSize = Math.min(subW[s] - 4, rowH - 4);
+            doc.rect(cx + (subW[s] - boxSize) / 2, y + (rowH - boxSize) / 2, boxSize, boxSize)
+              .lineWidth(0.75).stroke('#000000');
+          } else {
+            const raw = row[sc.key] as string;
+            const isTime = sc.key === 'waveMeetingTime' || sc.key === 'stagingTime' || sc.key === 'raceStart';
+            const val = isTime ? (raw ? formatTime12Hour(raw) : '—') : raw;
+            doc.fillColor('#000000').font('Helvetica').fontSize(fontSize);
+            this.oneLine(doc, val, cx + 2, y + 1, subW[s] - 4, sc.align);
+          }
+          cx += subW[s];
+        }
+        y += rowH;
+      }
+    }
+  }
+
+  // ─── Pocket printout: flatten + sort athletes by wave order, then first name ─
+  private buildPocketEntries(schedule: TeamWaveSchedule): PocketEntry[] {
+    const entries: PocketEntry[] = [];
+    for (const wave of schedule.waves) {
+      const waveEntries: PocketEntry[] = [];
+      for (const cat of wave.categories) {
+        for (const a of cat.athletes) {
+          waveEntries.push({
+            waveName: wave.waveName,
+            name: `${a.lastName}, ${a.firstName}`,
+            firstName: a.firstName,
+            lastName: a.lastName,
+            categoryName: cat.categoryName,
+            startTime: cat.startTime,
+          });
+        }
+      }
+      waveEntries.sort((x, y) =>
+        x.firstName.localeCompare(y.firstName) || x.lastName.localeCompare(y.lastName),
+      );
+      entries.push(...waveEntries);
+    }
+    return entries;
+  }
+
+  // ─── One physical page (front or back) of the pocket printout: 2x2 panels ─
+  private renderPocketPage(
+    doc: PDFKit.PDFDocument,
+    panels: PocketEntry[][],
+    brand: PdfBranding,
+  ): void {
+    const positions = [
+      { x: 0, y: 0 }, { x: PANEL_W, y: 0 },
+      { x: 0, y: PANEL_H }, { x: PANEL_W, y: PANEL_H },
+    ];
+    for (let i = 0; i < PANELS_PER_SHEET; i++) {
+      this.renderPocketPanel(doc, panels[i] ?? [], positions[i].x, positions[i].y, brand);
+    }
+
+    // Fold guides at the physical quarter-fold creases
+    doc.dash(4, { space: 3 }).lineWidth(0.5).strokeColor('#999999');
+    doc.moveTo(PANEL_W, 0).lineTo(PANEL_W, PANEL_H * 2).stroke();
+    doc.moveTo(0, PANEL_H).lineTo(PANEL_W * 2, PANEL_H).stroke();
+    doc.undash();
+  }
+
+  private renderPocketPanel(
+    doc: PDFKit.PDFDocument,
+    entries: PocketEntry[],
+    px: number,
+    py: number,
+    brand: PdfBranding,
+  ): void {
+    const PAD = 10;
+    const innerW = PANEL_W - PAD * 2;
+
+    const waveNames = [...new Set(entries.map((e) => e.waveName))];
+    const headerLabel = waveNames.length === 0 ? '' : waveNames.length === 1 ? waveNames[0] : 'Multiple Waves';
+
+    doc.rect(px, py, PANEL_W, 22).fill(brand.primaryColor);
+    doc.fillColor('#FFFFFF').fontSize(10).font('Helvetica-Bold');
+    this.oneLine(doc, headerLabel, px + PAD, py + 6, innerW);
+
+    let y = py + 22 + 6;
+    const nameW = innerW * 0.34;
+    const waveW = innerW * 0.18;
+    const catW = innerW * 0.28;
+    const startW = innerW * 0.20;
+
+    doc.fillColor('#555555').fontSize(6).font('Helvetica-Bold');
+    this.oneLine(doc, 'NAME', px + PAD, y, nameW);
+    this.oneLine(doc, 'WAVE', px + PAD + nameW, y, waveW);
+    this.oneLine(doc, 'CAT', px + PAD + nameW + waveW, y, catW);
+    this.oneLine(doc, 'START', px + PAD + nameW + waveW + catW, y, startW, 'right');
+    y += 10;
+
+    const rowH = entries.length > 0 ? Math.min(14, (py + PANEL_H - y - 4) / entries.length) : 14;
+    const fontSize = Math.max(6, Math.min(8, rowH - 3));
+
+    for (const e of entries) {
+      doc.fillColor('#000000').font('Helvetica').fontSize(fontSize);
+      this.oneLine(doc, e.name, px + PAD, y, nameW);
+      this.oneLine(doc, e.waveName.replace(/\s*-\s*(HS|JD)$/i, ''), px + PAD + nameW, y, waveW);
+      this.oneLine(doc, e.categoryName, px + PAD + nameW + waveW, y, catW);
+      this.oneLine(doc, formatTime12Hour(e.startTime), px + PAD + nameW + waveW + catW, y, startW, 'right');
+      y += rowH;
+    }
+  }
+
+  // PDFKit's `lineBreak: false` does NOT suppress word-wrapping once a `width` is
+  // given (it only skips computing a *default* width) — text that doesn't fit still
+  // wraps onto a second line, which corrupts tightly-packed table rows. Pairing an
+  // explicit `height` (one line tall) with `ellipsis: true` is what actually forces
+  // truncation to a single line.
+  private oneLine(
+    doc: PDFKit.PDFDocument,
+    text: string,
+    x: number,
+    y: number,
+    width: number,
+    align: 'left' | 'center' | 'right' = 'left',
+  ): void {
+    const h = doc.currentLineHeight() + 1;
+    doc.text(text, x, y, { width, height: h, ellipsis: true, align });
   }
 
   private async fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
