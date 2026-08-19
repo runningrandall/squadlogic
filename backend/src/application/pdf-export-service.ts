@@ -299,7 +299,7 @@ export class PdfExportService {
 
     // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athletes.
     // Fixed columns take up their share; Category takes whatever content width remains.
-    const fixedCols = [80, 60, 56, 54, 70, 40];
+    const fixedCols = [80, 85, 85, 80, 95, 55];
     const categoryColW = pm.CW - fixedCols.reduce((s, w) => s + w, 0);
     const cols = [fixedCols[0], categoryColW, ...fixedCols.slice(1)];
     const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', '#'];
@@ -326,13 +326,14 @@ export class PdfExportService {
     doc.y = thY + HDR_H;
 
     // Data rows — height grows to fit however many lines the category list wraps to.
-    // The category column gets a larger font than the rest of the row (it was the
-    // one column readers said was too small); other columns keep their original
-    // size since their fixed widths were already tuned for it.
-    const ROW_FONT_SIZE = 11;
+    // Category and the time/# columns each get a larger, more readable font than the
+    // Wave column, which stays compact since it was never flagged as hard to read.
+    const WAVE_FONT_SIZE = 11;
     const CAT_FONT_SIZE = 14;
+    const TIME_FONT_SIZE = 14;
     const ROW_V_PAD = 20;
     const ROW_MIN_H = 46;
+    const tableTopY = thY;
     let colorIdx = 0;
     for (const wave of schedule.waves) {
       const firstCat = wave.categories[0];
@@ -368,9 +369,9 @@ export class PdfExportService {
         // Only the category column (i=1) may wrap (ROW_H above is sized to fit it);
         // every other column is forced to a single truncated line.
         const allowWrap = i === 1;
-        const fontSize = allowWrap ? CAT_FONT_SIZE : ROW_FONT_SIZE;
+        const fontSize = allowWrap ? CAT_FONT_SIZE : i === 0 ? WAVE_FONT_SIZE : TIME_FONT_SIZE;
         doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
-        const ty = rowY + (allowWrap ? (ROW_H - categoryH) / 2 : (ROW_H - ROW_FONT_SIZE) / 2 - 2);
+        const ty = rowY + (allowWrap ? (ROW_H - categoryH) / 2 : (ROW_H - fontSize) / 2);
         if (allowWrap) {
           doc.text(rowVals[i], x + 4, ty, { width: cols[i] - 8, align: centered ? 'center' : 'left' });
         } else {
@@ -380,6 +381,11 @@ export class PdfExportService {
       }
       doc.y = rowY + ROW_H;
     }
+
+    // Separator line between the identifying columns (Wave/Category) and the
+    // schedule-data columns (times, athlete count).
+    const sepX = pm.L + cols[0] + cols[1];
+    doc.moveTo(sepX, tableTopY).lineTo(sepX, doc.y).lineWidth(1).strokeColor('#BBBBBB').stroke();
 
     // Footer
     doc.fontSize(7).fillColor('#999999').font('Helvetica');
