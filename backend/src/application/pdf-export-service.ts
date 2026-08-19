@@ -46,36 +46,39 @@ interface RosterRow {
   name: string;
   firstName: string;
   lastName: string;
+  callUpNumber: string;
   categoryName: string;
   waveMeetingTime: string;
   stagingTime: string;
   raceStart: string;
 }
 
-interface PocketEntry {
-  waveName: string;
-  name: string;
-  firstName: string;
-  lastName: string;
+interface PocketCategoryGroup {
   categoryName: string;
   startTime: string;
+  athleteNames: string[]; // "Last, First", pre-sorted alphabetically by first name
+}
+
+interface PocketWaveGroup {
+  waveName: string;
+  categories: PocketCategoryGroup[];
 }
 
 // Pocket printout panel geometry: a Letter sheet folded in half twice (quarter-fold)
-// unfolds into a 2x2 grid of these panels — final folded size ~4.25"x5.5".
+// unfolds into a 2x2 grid of these panels — final folded size ~4.25"x5.5". Each panel
+// holds one wave, laid out as 2 side-by-side category columns (round-robin if a wave
+// has more than 2 categories) — no per-row wave/category column needed since the panel
+// title already names the wave and each category has its own mini-header.
 const PANEL_W = 306;
 const PANEL_H = 396;
 const PANELS_PER_SHEET = 4; // per side; 8 total per physical (double-sided) sheet
-const POCKET_ROW_H = 14;
-const POCKET_HEADER_H = 28; // banner (22) + gap (6) before the column header row
-const POCKET_COLHDR_H = 10;
-const POCKET_BOTTOM_PAD = 6;
-// Max athletes a panel can hold at a comfortably readable row height — panels are
-// filled to this before starting a new one, rather than spreading entries evenly
-// across every panel (which left most panels mostly blank).
-const POCKET_MAX_ROWS_PER_PANEL = Math.floor(
-  (PANEL_H - POCKET_HEADER_H - POCKET_COLHDR_H - POCKET_BOTTOM_PAD) / POCKET_ROW_H,
-);
+const POCKET_TITLE_H = 24;
+const POCKET_TITLE_GAP = 6;
+const POCKET_COLS = 2;
+const POCKET_COL_GAP = 10;
+const POCKET_CAT_HDR_H = 20;
+const POCKET_CAT_GAP = 6;
+const POCKET_ATHLETE_ROW_H = 12;
 
 export class PdfExportService {
   // ─── Wave-detail schedule export (Tabloid, up to 2 waves per page) ────────
@@ -168,6 +171,7 @@ export class PdfExportService {
           name: `${a.lastName}, ${a.firstName}`,
           firstName: a.firstName,
           lastName: a.lastName,
+          callUpNumber: a.callUpNumber ?? '',
           categoryName: cat.categoryName,
           waveMeetingTime: a.logistics?.waveMeetingTime ?? '',
           stagingTime: a.logistics?.stagingTime ?? '',
@@ -204,17 +208,15 @@ export class PdfExportService {
     const PDFDocument = (await import('pdfkit')).default;
     const brand = { ...DEFAULT_BRANDING, ...branding };
 
-    const entries = this.buildPocketEntries(schedule);
-
-    // Fill each panel to capacity before starting the next, rather than spreading
-    // entries evenly across every panel (which left most panels mostly blank).
-    const panels: PocketEntry[][] = [];
-    for (let i = 0; i < entries.length; i += POCKET_MAX_ROWS_PER_PANEL) {
-      panels.push(entries.slice(i, i + POCKET_MAX_ROWS_PER_PANEL));
-    }
-    if (panels.length === 0) panels.push([]);
+    // One wave per panel — realistic wave sizes (max ~35-40 athletes across up to
+    // ~4 categories, observed in this app's actual event data) comfortably fit the
+    // 2-column category layout below; this doesn't attempt to split an oversized
+    // wave across multiple panels.
+    const waveGroups = this.buildPocketWaveGroups(schedule);
+    const panels: (PocketWaveGroup | null)[] = [...waveGroups];
+    if (panels.length === 0) panels.push(null);
     const sheets = Math.max(1, Math.ceil(panels.length / (PANELS_PER_SHEET * 2)));
-    while (panels.length < sheets * PANELS_PER_SHEET * 2) panels.push([]);
+    while (panels.length < sheets * PANELS_PER_SHEET * 2) panels.push(null);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
@@ -323,10 +325,14 @@ export class PdfExportService {
     }
     doc.y = thY + HDR_H;
 
-    // Data rows — height grows to fit however many lines the category list wraps to
+    // Data rows — height grows to fit however many lines the category list wraps to.
+    // The category column gets a larger font than the rest of the row (it was the
+    // one column readers said was too small); other columns keep their original
+    // size since their fixed widths were already tuned for it.
     const ROW_FONT_SIZE = 11;
+    const CAT_FONT_SIZE = 14;
     const ROW_V_PAD = 20;
-    const ROW_MIN_H = 42;
+    const ROW_MIN_H = 46;
     let colorIdx = 0;
     for (const wave of schedule.waves) {
       const firstCat = wave.categories[0];
@@ -334,7 +340,7 @@ export class PdfExportService {
       const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
       const athleteCount = wave.categories.reduce((s, c) => s + c.athletes.length, 0);
 
-      doc.font('Helvetica-Bold').fontSize(ROW_FONT_SIZE);
+      doc.font('Helvetica-Bold').fontSize(CAT_FONT_SIZE);
       const categoryH = doc.heightOfString(categoryList, { width: cols[1] - 8 });
       const ROW_H = Math.max(ROW_MIN_H, categoryH + ROW_V_PAD);
 
@@ -362,8 +368,9 @@ export class PdfExportService {
         // Only the category column (i=1) may wrap (ROW_H above is sized to fit it);
         // every other column is forced to a single truncated line.
         const allowWrap = i === 1;
-        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(ROW_FONT_SIZE);
-        const ty = rowY + (allowWrap ? 8 : (ROW_H - ROW_FONT_SIZE) / 2 - 2);
+        const fontSize = allowWrap ? CAT_FONT_SIZE : ROW_FONT_SIZE;
+        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+        const ty = rowY + (allowWrap ? (ROW_H - categoryH) / 2 : (ROW_H - ROW_FONT_SIZE) / 2 - 2);
         if (allowWrap) {
           doc.text(rowVals[i], x + 4, ty, { width: cols[i] - 8, align: centered ? 'center' : 'left' });
         } else {
@@ -579,11 +586,12 @@ export class PdfExportService {
 
     // Sub-columns within each roster column, as fractions of colW
     const SUB_COLS: { key: keyof RosterRow | 'box'; label: string; frac: number; align: 'left' | 'center' }[] = [
-      { key: 'name', label: 'NAME', frac: 0.36, align: 'left' },
-      { key: 'categoryName', label: 'CATEGORY', frac: 0.24, align: 'left' },
+      { key: 'name', label: 'NAME', frac: 0.30, align: 'left' },
+      { key: 'callUpNumber', label: 'CALLUP #', frac: 0.09, align: 'center' },
+      { key: 'categoryName', label: 'CATEGORY', frac: 0.22, align: 'left' },
       { key: 'waveMeetingTime', label: 'MTG', frac: 0.11, align: 'center' },
       { key: 'stagingTime', label: 'STAGE', frac: 0.11, align: 'center' },
-      { key: 'raceStart', label: 'START', frac: 0.11, align: 'center' },
+      { key: 'raceStart', label: 'START', frac: 0.10, align: 'center' },
       { key: 'box', label: 'IN', frac: 0.07, align: 'center' },
     ];
     const subW = SUB_COLS.map((sc) => colW * sc.frac);
@@ -618,7 +626,7 @@ export class PdfExportService {
           } else {
             const raw = row[sc.key] as string;
             const isTime = sc.key === 'waveMeetingTime' || sc.key === 'stagingTime' || sc.key === 'raceStart';
-            const val = isTime ? (raw ? formatTime12Hour(raw) : '—') : raw;
+            const val = isTime ? (raw ? formatTime12Hour(raw) : '—') : (raw || '—');
             doc.fillColor('#000000').font('Helvetica').fontSize(fontSize);
             this.oneLine(doc, val, cx + 2, y + 1, subW[s] - 4, sc.align);
           }
@@ -629,35 +637,27 @@ export class PdfExportService {
     }
   }
 
-  // ─── Pocket printout: flatten + sort athletes by wave order, then first name ─
-  private buildPocketEntries(schedule: TeamWaveSchedule): PocketEntry[] {
-    const entries: PocketEntry[] = [];
-    for (const wave of schedule.waves) {
-      const waveEntries: PocketEntry[] = [];
-      for (const cat of wave.categories) {
-        for (const a of cat.athletes) {
-          waveEntries.push({
-            waveName: wave.waveName,
-            name: `${a.lastName}, ${a.firstName}`,
-            firstName: a.firstName,
-            lastName: a.lastName,
-            categoryName: cat.categoryName,
-            startTime: cat.startTime,
-          });
-        }
-      }
-      waveEntries.sort((x, y) =>
-        x.firstName.localeCompare(y.firstName) || x.lastName.localeCompare(y.lastName),
-      );
-      entries.push(...waveEntries);
-    }
-    return entries;
+  // ─── Pocket printout: one group per wave, categories sorted by start time, ─
+  // ─── athletes within each category sorted alphabetically by first name ────
+  private buildPocketWaveGroups(schedule: TeamWaveSchedule): PocketWaveGroup[] {
+    return schedule.waves.map((wave) => ({
+      waveName: wave.waveName,
+      categories: [...wave.categories]
+        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+        .map((cat) => ({
+          categoryName: cat.categoryName,
+          startTime: cat.startTime,
+          athleteNames: [...cat.athletes]
+            .sort((x, y) => x.firstName.localeCompare(y.firstName) || x.lastName.localeCompare(y.lastName))
+            .map((a) => `${a.lastName}, ${a.firstName}`),
+        })),
+    }));
   }
 
   // ─── One physical page (front or back) of the pocket printout: 2x2 panels ─
   private renderPocketPage(
     doc: PDFKit.PDFDocument,
-    panels: PocketEntry[][],
+    panels: (PocketWaveGroup | null)[],
     brand: PdfBranding,
   ): void {
     const positions = [
@@ -665,7 +665,8 @@ export class PdfExportService {
       { x: 0, y: PANEL_H }, { x: PANEL_W, y: PANEL_H },
     ];
     for (let i = 0; i < PANELS_PER_SHEET; i++) {
-      this.renderPocketPanel(doc, panels[i] ?? [], positions[i].x, positions[i].y, brand);
+      const wave = panels[i];
+      if (wave) this.renderPocketPanel(doc, wave, positions[i].x, positions[i].y, brand);
     }
 
     // Fold guides at the physical quarter-fold creases
@@ -675,9 +676,13 @@ export class PdfExportService {
     doc.undash();
   }
 
+  // One wave per panel: a full-width title bar naming the wave, then up to
+  // POCKET_COLS side-by-side category columns (round-robin if the wave has more
+  // categories than columns). Each category gets its own mini-header showing the
+  // category name and its start time — no per-row wave/category column needed.
   private renderPocketPanel(
     doc: PDFKit.PDFDocument,
-    entries: PocketEntry[],
+    wave: PocketWaveGroup,
     px: number,
     py: number,
     brand: PdfBranding,
@@ -685,62 +690,46 @@ export class PdfExportService {
     const PAD = 10;
     const innerW = PANEL_W - PAD * 2;
 
-    const waveNames = [...new Set(entries.map((e) => this.shortWaveLabel(e.waveName)))];
-    const headerLabel = this.mergeWaveLabel(waveNames);
+    doc.rect(px, py, PANEL_W, POCKET_TITLE_H).fill(brand.primaryColor);
+    doc.fillColor('#FFFFFF').fontSize(12).font('Helvetica-Bold');
+    this.oneLine(doc, wave.waveName, px + PAD, py + 6, innerW);
 
-    doc.rect(px, py, PANEL_W, 22).fill(brand.primaryColor);
-    doc.fillColor('#FFFFFF').fontSize(10).font('Helvetica-Bold');
-    this.oneLine(doc, headerLabel, px + PAD, py + 6, innerW);
+    const colW = (innerW - POCKET_COL_GAP * (POCKET_COLS - 1)) / POCKET_COLS;
+    const colStartY = py + POCKET_TITLE_H + POCKET_TITLE_GAP;
+    const colYs = new Array(POCKET_COLS).fill(colStartY);
 
-    let y = py + 22 + 6;
-    const nameW = innerW * 0.34;
-    const waveW = innerW * 0.18;
-    const catW = innerW * 0.28;
-    const startW = innerW * 0.20;
-
-    doc.fillColor('#555555').fontSize(6).font('Helvetica-Bold');
-    this.oneLine(doc, 'NAME', px + PAD, y, nameW);
-    this.oneLine(doc, 'WAVE', px + PAD + nameW, y, waveW);
-    this.oneLine(doc, 'CAT', px + PAD + nameW + waveW, y, catW);
-    this.oneLine(doc, 'START', px + PAD + nameW + waveW + catW, y, startW, 'right');
-    y += POCKET_COLHDR_H;
-
-    const rowH = POCKET_ROW_H;
-    const fontSize = 9;
-
-    for (const e of entries) {
-      doc.fillColor('#000000').font('Helvetica').fontSize(fontSize);
-      this.oneLine(doc, e.name, px + PAD, y, nameW);
-      this.oneLine(doc, this.shortWaveLabel(e.waveName), px + PAD + nameW, y, waveW);
-      this.oneLine(doc, e.categoryName, px + PAD + nameW + waveW, y, catW);
-      this.oneLine(doc, formatTime12Hour(e.startTime), px + PAD + nameW + waveW + catW, y, startW, 'right');
-      y += rowH;
-    }
+    wave.categories.forEach((cat, i) => {
+      const col = i % POCKET_COLS;
+      const cx = px + PAD + col * (colW + POCKET_COL_GAP);
+      colYs[col] = this.renderPocketCategoryBlock(doc, cat, cx, colYs[col], colW) + POCKET_CAT_GAP;
+    });
   }
 
-  // "Wave 7 - JD" -> "Wave 7"
-  private shortWaveLabel(waveName: string): string {
-    return waveName.replace(/\s*-\s*(HS|JD)$/i, '');
-  }
+  // Single category's mini-header (name + start time) and athlete-name rows,
+  // rendered at an absolute position — returns the y it ended at, mirroring
+  // renderCategoryBlock's pattern so columns can stack multiple categories.
+  private renderPocketCategoryBlock(
+    doc: PDFKit.PDFDocument,
+    cat: PocketCategoryGroup,
+    cx: number,
+    startY: number,
+    colW: number,
+  ): number {
+    let y = startY;
 
-  // Panels can span more than one wave once entries are packed densely rather than
-  // spread thin — label that as "Wave 7 and 8" (or "Wave 7, 8 and 9"), not a vague
-  // "Multiple Waves", so the reader still knows exactly what's on the panel.
-  private mergeWaveLabel(waveNames: string[]): string {
-    if (waveNames.length === 0) return '';
-    if (waveNames.length === 1) return waveNames[0];
+    doc.fillColor('#222222').fontSize(8.5).font('Helvetica-Bold');
+    this.oneLine(doc, cat.categoryName, cx, y, colW);
+    doc.fillColor('#666666').fontSize(7.5).font('Helvetica');
+    this.oneLine(doc, formatTime12Hour(cat.startTime), cx, y + 10, colW);
+    y += POCKET_CAT_HDR_H;
 
-    const parsed = waveNames.map((n) => /^(.*?)(\d+)$/.exec(n));
-    const prefixes = new Set(parsed.map((m) => m?.[1]?.trim()));
-    if (parsed.every((m): m is RegExpExecArray => m !== null) && prefixes.size === 1) {
-      const prefix = parsed[0][1].trim();
-      const numbers = parsed.map((m) => m[2]);
-      const last = numbers[numbers.length - 1];
-      return `${prefix} ${numbers.slice(0, -1).join(', ')} and ${last}`;
+    for (const name of cat.athleteNames) {
+      doc.fillColor('#000000').font('Helvetica').fontSize(8.5);
+      this.oneLine(doc, name, cx, y, colW);
+      y += POCKET_ATHLETE_ROW_H;
     }
 
-    const last = waveNames[waveNames.length - 1];
-    return `${waveNames.slice(0, -1).join(', ')} and ${last}`;
+    return y;
   }
 
   // PDFKit's `lineBreak: false` does NOT suppress word-wrapping once a `width` is

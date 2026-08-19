@@ -57,51 +57,53 @@ describe('PdfExportService.generatePocketPdf', () => {
     }
   });
 
-  it('labels a panel spanning multiple waves as "Wave 7 and 9", not "Multiple Waves"', async () => {
+  it('gives each wave its own panel, titled with the full wave name', async () => {
     const buffer = await service.generatePocketPdf(schedule);
     const text = await getPdfText(buffer);
-    expect(text).toContain('Wave 7 and 9');
-    expect(text).not.toContain('Multiple Waves');
+    expect(text).toContain('Wave 7 - JD');
+    expect(text).toContain('Wave 9 - JD');
   });
 
-  it('fills a panel densely (25+ athletes) instead of spreading entries evenly across all panels', async () => {
-    const denseWave = {
+  it('shows each category with its start time instead of a per-row wave column', async () => {
+    const buffer = await service.generatePocketPdf(schedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('Advanced Boys');
+    expect(text).toContain('2:30 PM');
+    expect(text).toContain('Beginner 7th Grade Boys');
+    expect(text).toContain('3:50 PM');
+  });
+
+  it('keeps a wave with multiple categories on one panel (2-column layout)', async () => {
+    const multiCatWave = {
       waveName: 'Wave 1 - HS',
       categories: [
-        {
-          categoryName: 'JV B Boys',
-          stageTime: '07:45',
-          startTime: '08:00',
-          laps: 2,
-          athletes: Array.from({ length: 60 }, (_, i) => mkAthlete(`First${i}`, `Last${i}`, String(i))),
-        },
+        { categoryName: 'JV B Boys', stageTime: '07:45', startTime: '08:00', laps: 2,
+          athletes: Array.from({ length: 15 }, (_, i) => mkAthlete(`B${i}`, `Last${i}`, String(i))) },
+        { categoryName: 'JV C Boys', stageTime: '07:50', startTime: '08:05', laps: 2,
+          athletes: Array.from({ length: 15 }, (_, i) => mkAthlete(`C${i}`, `Last${i}`, String(i))) },
       ],
     };
-    const denseSchedule: TeamWaveSchedule = { ...schedule, waves: [denseWave] };
-    const buffer = await service.generatePocketPdf(denseSchedule);
-    // 60 athletes at ~25/panel should need 3 panels (one sheet, no spill), not spread
-    // thin across all 8 panels of a sheet.
+    const oneWaveSchedule: TeamWaveSchedule = { ...schedule, waves: [multiCatWave] };
+    const buffer = await service.generatePocketPdf(oneWaveSchedule);
+    // A single wave should never need more than one sheet (2 pages).
     expect(await getPdfPageCount(buffer)).toBe(2);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('JV B Boys');
+    expect(text).toContain('JV C Boys');
   });
 
-  it('spills onto additional sheets when one team has a very large roster', async () => {
-    const bigWave = {
-      waveName: 'Wave 1 - HS',
+  it('spills onto an additional sheet once more than 8 waves need panels', async () => {
+    const manyWaves = Array.from({ length: 9 }, (_, i) => ({
+      waveName: `Wave ${i + 1} - HS`,
       categories: [
-        {
-          categoryName: 'JV B Boys',
-          stageTime: '07:45',
-          startTime: '08:00',
-          laps: 2,
-          athletes: Array.from({ length: 400 }, (_, i) => mkAthlete(`First${i}`, `Last${i}`, String(i))),
-        },
+        { categoryName: 'Category', stageTime: '08:00', startTime: '08:00', laps: 1,
+          athletes: [mkAthlete('A', 'B', '1')] },
       ],
-    };
-    const bigSchedule: TeamWaveSchedule = { ...schedule, waves: [bigWave] };
-    const buffer = await service.generatePocketPdf(bigSchedule);
-    const pageCount = await getPdfPageCount(buffer);
-    expect(pageCount).toBeGreaterThan(2);
-    expect(pageCount % 2).toBe(0); // always front+back pairs
+    }));
+    const manyWaveSchedule: TeamWaveSchedule = { ...schedule, waves: manyWaves };
+    const buffer = await service.generatePocketPdf(manyWaveSchedule);
+    // 9 waves > 8 panels/sheet, so this needs a second double-sided sheet (4 pages).
+    expect(await getPdfPageCount(buffer)).toBe(4);
   });
 
   it('filename uses the pocket variant suffix', () => {

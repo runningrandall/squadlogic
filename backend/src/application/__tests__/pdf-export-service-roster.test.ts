@@ -104,6 +104,12 @@ describe('PdfExportService.generateRosterPdf', () => {
     expect(buffer.toString('latin1')).toContain('/Type /Page');
   });
 
+  it('includes a callup number column with a header', async () => {
+    const buffer = await service.generateRosterPdf(smallSchedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('CALLUP #');
+  });
+
   it('filename uses the roster variant suffix', () => {
     const filename = service.generateFilename('Wasatch', '2026-08-22', 'roster');
     expect(filename).toBe('Wasatch_2026-08-22_roster.pdf');
