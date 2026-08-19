@@ -411,7 +411,7 @@ export class PdfExportService {
 
   // ─── Pure height estimate for a wave, used to pack up to 2 waves per page ─
   private measureWaveHeight(wave: WaveGroup, pm: PageMetrics): number {
-    const TIMING_BLOCK = 36 + 16 + 24; // banner + label row + value row
+    const TIMING_BLOCK = 36 + 16 + 24 + 16; // banner + label row + value row + divider gap
     const numCols = this.waveColumnCount(wave, pm);
     const colHeights = new Array(numCols).fill(0);
     wave.categories.forEach((c, i) => {
@@ -473,11 +473,17 @@ export class PdfExportService {
     }
     doc.y = valY + 26;
 
+    // Divider between the wave-level timing block and the category rosters below —
+    // visually distinct sections, so give them a clear gap and a rule line.
+    const dividerY = doc.y + 8;
+    doc.moveTo(pm.L, dividerY).lineTo(pm.L + tableW, dividerY).lineWidth(1).strokeColor('#CCCCCC').stroke();
+    doc.y += 16;
+
     // N independent columns (N chosen to use the full page width, up to one per
     // category) — each flows downward on its own, no height coupling between neighbours.
     // The packing math in generateSchedulePdf never admits a wave whose own banner+timing
     // block would start this close to the page bottom, so no page-overflow guard is needed here.
-    const COL_W = PdfExportService.CAT_COL_W; // name (156) + staging # (40) + bib (56) + 8px padding
+    const COL_W = PdfExportService.CAT_COL_W; // name (140) + staging # (40) + bib (56) + padding/gaps
     const COL_GAP = PdfExportService.CAT_COL_GAP;
     const numCols = this.waveColumnCount(wave, pm);
 
@@ -502,9 +508,17 @@ export class PdfExportService {
     colW: number,
     brand: PdfBranding,
   ): number {
-    const nameW = 156;
+    // Consistent left/right inset and inter-column gap applied to every row in this
+    // block (header, column labels, athlete rows) so their left edges all line up.
+    const PAD = 8;
+    const GAP = 4;
+    const nameW = 140;
     const stagingW = 40;
-    const bibW = 56;
+    const bibW = 56; // PAD + nameW + GAP + stagingW + GAP + bibW + PAD === colW
+    const nameX = cx + PAD;
+    const stagingX = nameX + nameW + GAP;
+    const bibX = stagingX + stagingW + GAP;
+
     const HEADER_H = PdfExportService.CAT_HEADER_H;
     const COLHDR_H = PdfExportService.CAT_COLHDR_H;
     const ROW_H = PdfExportService.CAT_ROW_H;
@@ -521,22 +535,22 @@ export class PdfExportService {
     const topPad = (HEADER_H - (nameLineH + subLineH)) / 2;
 
     doc.fillColor('#222222').fontSize(NAME_FONT).font('Helvetica-Bold');
-    this.oneLine(doc, `${cat.categoryName}  (${cat.athletes.length})`, cx + 8, y + topPad, colW - 16);
+    this.oneLine(doc, `${cat.categoryName}  (${cat.athletes.length})`, nameX, y + topPad, colW - PAD * 2);
     doc.fillColor('#444444').fontSize(SUB_FONT).font('Helvetica');
     const stageTime = cat.athletes[0]?.logistics?.stagingTime;
     this.oneLine(
       doc,
       `Stage: ${stageTime ? formatTime12Hour(stageTime) : '—'}   Race: ${formatTime12Hour(cat.startTime)}   ${cat.laps ?? '—'} laps`,
-      cx + 8, y + topPad + nameLineH, colW - 16,
+      nameX, y + topPad + nameLineH, colW - PAD * 2,
     );
     y += HEADER_H;
 
     // Column headers
     doc.rect(cx, y, colW, COLHDR_H).fill('#E0E0E0');
     doc.fillColor('#555555').fontSize(8).font('Helvetica-Bold');
-    this.oneLine(doc, 'ATHLETE', cx + 4, y + 4, nameW - 4);
-    this.oneLine(doc, 'STG #', cx + nameW + 4, y + 4, stagingW - 4);
-    this.oneLine(doc, 'BIB', cx + nameW + stagingW + 8, y + 4, bibW - 4);
+    this.oneLine(doc, 'ATHLETE', nameX, y + 4, nameW);
+    this.oneLine(doc, 'STG #', stagingX, y + 4, stagingW);
+    this.oneLine(doc, 'BIB', bibX, y + 4, bibW);
     y += COLHDR_H;
 
     // Athlete rows
@@ -546,9 +560,9 @@ export class PdfExportService {
       }
       doc.fillColor('#000000').fontSize(9).font('Helvetica');
       const a = cat.athletes[r];
-      this.oneLine(doc, `${a.lastName}, ${a.firstName}`, cx + 4, y + 3, nameW - 4);
-      this.oneLine(doc, a.callUpNumber ?? '—', cx + nameW + 4, y + 3, stagingW - 4);
-      this.oneLine(doc, a.bibNumber, cx + nameW + stagingW + 8, y + 3, bibW - 4);
+      this.oneLine(doc, `${a.lastName}, ${a.firstName}`, nameX, y + 3, nameW);
+      this.oneLine(doc, a.callUpNumber ?? '—', stagingX, y + 3, stagingW);
+      this.oneLine(doc, a.bibNumber, bibX, y + 3, bibW);
       y += ROW_H;
     }
 

@@ -301,6 +301,41 @@ describe('Race event routes', () => {
       );
     });
 
+    it('re-reads WaveConfig instead of reusing an expired cached schedule', async () => {
+      const eventId = await importAndGetEventId('10');
+      mockBrandingService.getBranding.mockResolvedValue(null);
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+      mockPdfService.generateSchedulePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
+      mockPdfService.generateFilename.mockReturnValue('Team_A_schedule.pdf');
+
+      // Only Date is mocked (not timers) — faking setTimeout/setInterval breaks
+      // Fastify's internal async scheduling and hangs `app.inject`.
+      const realNow = Date.now();
+      try {
+        // Populate the schedule cache via the /schedule step, same as a normal user flow.
+        await app.inject({
+          method: 'POST', url: `/race-events/${eventId}/schedule`, headers,
+          payload: { teamName: 'Team A' },
+        });
+        expect(mockScheduleService.generateSchedule).toHaveBeenCalledTimes(1);
+
+        // A WaveConfig correction made after caching — e.g. a lap count fix — should
+        // be picked up once the cache entry's TTL has elapsed, not silently ignored.
+        vi.setSystemTime(realNow + 6 * 60 * 1000);
+
+        const res = await app.inject({
+          method: 'POST', url: `/race-events/${eventId}/export/pdf`, headers,
+          payload: { teamName: 'Team A' },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(mockScheduleService.generateSchedule).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('dispatches to generateRosterPdf when variant is "roster"', async () => {
       const eventId = await importAndGetEventId('8');
       mockBrandingService.getBranding.mockResolvedValue(null);

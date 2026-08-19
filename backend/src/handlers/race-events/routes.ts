@@ -43,8 +43,26 @@ export default async function raceEventRoutes(
   // In-memory cache (warm path) — falls back to DynamoDB across Lambda instances
   const importCache = new Map<string, RaceSessionData>();
 
-  // Schedule cache keyed by eventId:teamName
-  const scheduleCache = new Map<string, TeamWaveSchedule>();
+  // Schedule cache keyed by eventId:teamName. Short TTL rather than unbounded: an
+  // enriched schedule bakes in wave-config values (laps, groupings) at generation
+  // time, so an unbounded cache would keep serving a stale export indefinitely after
+  // a WaveConfig correction, for as long as the Lambda container stays warm.
+  const SCHEDULE_CACHE_TTL_MS = 5 * 60 * 1000;
+  const scheduleCache = new Map<string, { value: TeamWaveSchedule; expiresAt: number }>();
+
+  function cacheSchedule(key: string, value: TeamWaveSchedule): void {
+    scheduleCache.set(key, { value, expiresAt: Date.now() + SCHEDULE_CACHE_TTL_MS });
+  }
+
+  function getCachedSchedule(key: string): TeamWaveSchedule | undefined {
+    const entry = scheduleCache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      scheduleCache.delete(key);
+      return undefined;
+    }
+    return entry.value;
+  }
 
   // Resolve import session: check in-memory first, then DynamoDB
   async function resolveImport(eventId: string): Promise<RaceSessionData | null> {
@@ -159,7 +177,7 @@ export default async function raceEventRoutes(
       const enriched = services.logistics.enrichSchedule(schedule);
 
       // Cache for subsequent PDF export
-      scheduleCache.set(`${request.params.eventId}:${body.teamName}`, enriched);
+      cacheSchedule(`${request.params.eventId}:${body.teamName}`, enriched);
 
       return success(reply, enriched);
     },
@@ -183,7 +201,7 @@ export default async function raceEventRoutes(
       const body = request.body as { teamName: string; variant?: 'schedule' | 'roster' | 'pocket' };
       const variant = body.variant ?? 'schedule';
       const cacheKey = `${request.params.eventId}:${body.teamName}`;
-      let enriched = scheduleCache.get(cacheKey);
+      let enriched = getCachedSchedule(cacheKey);
 
       // If no cached schedule, generate one with defaults
       if (!enriched) {
