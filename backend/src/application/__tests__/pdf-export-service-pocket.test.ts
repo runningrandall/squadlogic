@@ -6,7 +6,7 @@ import type { TeamWaveSchedule, ScheduleAthlete } from '../../domain/race-event.
 const service = new PdfExportService();
 
 function mkAthlete(firstName: string, lastName: string, bibNumber: string): ScheduleAthlete {
-  return { firstName, lastName, bibNumber, callUpNumber: '1' };
+  return { firstName, lastName, bibNumber, callUpNumber: '1', calledUp: false };
 }
 
 const schedule: TeamWaveSchedule = {
@@ -73,6 +73,21 @@ describe('PdfExportService.generatePocketPdf', () => {
     expect(text).toContain('3:50 PM');
   });
 
+  it('prints names as "First Last" instead of "Last, First"', async () => {
+    const buffer = await service.generatePocketPdf(schedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('Zoe Young');
+    expect(text).not.toContain('Young, Zoe');
+  });
+
+  it('includes each athlete\'s bib number', async () => {
+    const buffer = await service.generatePocketPdf(schedule);
+    const text = await getPdfText(buffer);
+    for (const bib of ['1', '2', '3', '4']) {
+      expect(text).toContain(bib);
+    }
+  });
+
   it('keeps a wave with multiple categories on one panel (2-column layout)', async () => {
     const multiCatWave = {
       waveName: 'Wave 1 - HS',
@@ -104,6 +119,31 @@ describe('PdfExportService.generatePocketPdf', () => {
     const buffer = await service.generatePocketPdf(manyWaveSchedule);
     // 9 waves > 8 panels/sheet, so this needs a second double-sided sheet (4 pages).
     expect(await getPdfPageCount(buffer)).toBe(4);
+  });
+
+  it('breaks ties by last name when two athletes in a category share a first name', async () => {
+    const tieWave = {
+      waveName: 'Wave 1',
+      categories: [
+        { categoryName: 'Advanced Boys', stageTime: '14:15', startTime: '14:30', laps: 1,
+          athletes: [mkAthlete('Sam', 'Zephyr', '1'), mkAthlete('Sam', 'Adams', '2')] },
+      ],
+    };
+    const tieSchedule: TeamWaveSchedule = { ...schedule, waves: [tieWave] };
+    const buffer = await service.generatePocketPdf(tieSchedule);
+    const text = await getPdfText(buffer);
+    const adamsIdx = text.indexOf('Sam Adams');
+    const zephyrIdx = text.indexOf('Sam Zephyr');
+    expect(adamsIdx).toBeGreaterThan(-1);
+    expect(zephyrIdx).toBeGreaterThan(-1);
+    expect(adamsIdx).toBeLessThan(zephyrIdx);
+  });
+
+  it('renders an empty schedule (no waves) without error', async () => {
+    const emptySchedule: TeamWaveSchedule = { ...schedule, totalAthletes: 0, waves: [] };
+    const buffer = await service.generatePocketPdf(emptySchedule);
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(await getPdfPageCount(buffer)).toBe(2);
   });
 
   it('filename uses the pocket variant suffix', () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { PdfExportService } from '../pdf-export-service.js';
-import { getPdfPageCount } from './pdf-test-utils.js';
+import { getPdfPageCount, getPdfText } from './pdf-test-utils.js';
 import type { TeamWaveSchedule } from '../../domain/race-event.js';
 
 const service = new PdfExportService();
@@ -231,6 +231,106 @@ describe('PdfExportService', () => {
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
   });
 
+  it('splits athlete names into separate FIRST/LAST columns instead of "Last, First"', async () => {
+    const buffer = await service.generatePdf(schedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('CALLUP #');
+    expect(text).toContain('FIRST');
+    expect(text).toContain('LAST');
+    expect(text).toContain('BIB #');
+    expect(text).not.toContain('Adams, Dave');
+  });
+
+  it('labels the summary\'s last column ATHLETE COUNT', async () => {
+    const buffer = await service.generatePdf(schedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('ATHLETE');
+    expect(text).toContain('COUNT');
+  });
+
+  it('renders without error when an athlete is called up', async () => {
+    const calledUpSchedule: TeamWaveSchedule = {
+      ...schedule,
+      waves: [
+        {
+          waveName: 'Wave 3 - HS',
+          categories: [
+            {
+              categoryName: 'Varsity Boys',
+              stageTime: '09:50',
+              startTime: '10:10',
+              laps: 4,
+              athletes: [
+                { firstName: 'Dave', lastName: 'Adams', bibNumber: '201', callUpNumber: '1', calledUp: true },
+                { firstName: 'Mike', lastName: 'Clark', bibNumber: '202', callUpNumber: '2', calledUp: false },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const buffer = await service.generatePdf(calledUpSchedule);
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    const text = await getPdfText(buffer);
+    expect(text).toContain('Dave');
+    expect(text).toContain('Adams');
+  });
+
+  it('renders without error when an athlete has no callUpNumber', async () => {
+    const noCallUpSchedule: TeamWaveSchedule = {
+      ...schedule,
+      waves: [
+        {
+          waveName: 'Wave 3 - HS',
+          categories: [
+            {
+              categoryName: 'Varsity Boys',
+              stageTime: '09:50',
+              startTime: '10:10',
+              laps: 4,
+              athletes: [
+                { firstName: 'Dave', lastName: 'Adams', bibNumber: '201', callUpNumber: null, calledUp: false },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const buffer = await service.generatePdf(noCallUpSchedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('—');
+  });
+
+  it('renders an empty schedule (no waves) without error', async () => {
+    const emptySchedule: TeamWaveSchedule = { ...schedule, totalAthletes: 0, waves: [] };
+    const buffer = await service.generateSchedulePdf(emptySchedule);
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(await getPdfPageCount(buffer)).toBe(1);
+  });
+
+  it('shows an em-dash when a category has no known start time', async () => {
+    const noStartSchedule: TeamWaveSchedule = {
+      ...schedule,
+      waves: [
+        {
+          waveName: 'Wave 1',
+          categories: [
+            {
+              categoryName: 'Mystery Category',
+              stageTime: '',
+              startTime: '',
+              laps: 1,
+              athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1', calledUp: false }],
+            },
+          ],
+        },
+      ],
+    };
+    const buffer = await service.generatePdf(noStartSchedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('—');
+  });
+
   describe('Tabloid wave packing', () => {
     function mkWave(waveName: string, startTime: string, athleteCount: number) {
       return {
@@ -270,6 +370,34 @@ describe('PdfExportService', () => {
       // 1 summary page + at least 1 content page; the huge wave should not be squeezed
       // onto the same page as the small one if it wouldn't fit.
       expect(await getPdfPageCount(buffer)).toBeGreaterThanOrEqual(2);
+    });
+
+    it('spills the summary page onto a second page when there are too many waves to fit one page', async () => {
+      const manyWaves: TeamWaveSchedule = {
+        ...schedule,
+        waves: Array.from({ length: 20 }, (_, i) => mkWave(`Wave ${i + 1}`, `${8 + Math.floor(i / 4)}:${(i % 4) * 15}0`, 1)),
+      };
+      const buffer = await service.generateSchedulePdf(manyWaves);
+      expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+      const text = await getPdfText(buffer);
+      // Every wave's name should still appear even though the summary table itself needed
+      // to spill onto a second page (20 waves at min row height don't fit one page).
+      expect(text).toContain('Wave 1');
+      expect(text).toContain('Wave 20');
+    });
+
+    it('packs more than 2 small waves onto one content page now that the hard cap is removed', async () => {
+      const threeTinyWaves: TeamWaveSchedule = {
+        ...schedule,
+        waves: [
+          mkWave('Wave 7 - JD', '14:30', 1),
+          mkWave('Wave 8 - JD', '15:00', 1),
+          mkWave('Wave 9 - JD', '15:50', 1),
+        ],
+      };
+      const buffer = await service.generateSchedulePdf(threeTinyWaves);
+      // 1 summary page + 1 content page holding all three tiny waves.
+      expect(await getPdfPageCount(buffer)).toBe(2);
     });
 
     it('generateSchedulePdf and the generatePdf alias produce the same page count', async () => {

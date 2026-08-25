@@ -23,12 +23,17 @@ const ROW_COLORS = [
 
 // Column header accent colors for the summary timing columns
 const TIME_COL_COLORS = {
-  waveMtg: '#FFD54F',
+  waveMtg: '#B39DDB',
   warmUp:  '#EF9A9A',
   stage:   '#FFCC80',
   race:    '#A5D6A7',
   athletes:'#B0BEC5',
 };
+
+// Alternating yellow shades for a called-up athlete's row — keeps the row-to-row striping
+// that makes horizontal tracking easy, instead of flattening called-up rows to one flat color.
+// Saturated enough to read as "highlighted" at a glance, not just a faint tint.
+const CALLED_UP_ROW_COLORS = ['#FFEB3B', '#FDD835'];
 
 // Page geometry — multiple exports use different physical page sizes, so this is
 // threaded through render methods rather than hardcoded as module constants.
@@ -47,16 +52,29 @@ interface RosterRow {
   firstName: string;
   lastName: string;
   callUpNumber: string;
-  categoryName: string;
+  calledUp: boolean;
   waveMeetingTime: string;
   stagingTime: string;
   raceStart: string;
 }
 
+// One category's header band + its (already first-name-sorted) athlete rows — the atomic
+// unit that gets flowed down N side-by-side roster columns without ever being split.
+interface RosterCategoryBlock {
+  categoryName: string;
+  colorIndex: number;
+  rows: RosterRow[];
+}
+
+interface PocketAthlete {
+  name: string; // "First Last"
+  bibNumber: string;
+}
+
 interface PocketCategoryGroup {
   categoryName: string;
   startTime: string;
-  athleteNames: string[]; // "Last, First", pre-sorted alphabetically by first name
+  athletes: PocketAthlete[]; // pre-sorted alphabetically by first name
 }
 
 interface PocketWaveGroup {
@@ -121,33 +139,33 @@ export class PdfExportService {
 
       // Page 1: summary
       this.renderPageHeader(pm, doc, sorted, brand, logoBuffer, eventLocation);
-      this.renderSummary(pm, doc, sorted, brand);
+      this.renderSummary(pm, doc, sorted, brand, logoBuffer, eventLocation);
 
-      // Subsequent pages: waves packed up to 2-per-page based on measured height
+      // Subsequent pages: waves packed as many-per-page as measured height allows
       const avail = pm.PH - pm.HEADER_H - 20;
-      let pageWaves: WaveGroup[] = [];
+      let pageWaves: { wave: WaveGroup; colorIndex: number }[] = [];
       let usedH = 0;
 
       const flushPage = () => {
         if (pageWaves.length === 0) return;
         doc.addPage();
         this.renderPageHeader(pm, doc, sorted, brand, logoBuffer, eventLocation);
-        for (const w of pageWaves) {
-          this.renderWave(pm, doc, w, brand);
+        for (const { wave, colorIndex } of pageWaves) {
+          this.renderWave(pm, doc, wave, colorIndex, brand);
           doc.y += 20;
         }
         pageWaves = [];
         usedH = 0;
       };
 
-      for (const wave of sorted.waves) {
+      sorted.waves.forEach((wave, colorIndex) => {
         const h = this.measureWaveHeight(wave, pm);
-        if (pageWaves.length > 0 && (usedH + h > avail || pageWaves.length >= 2)) {
+        if (pageWaves.length > 0 && usedH + h > avail) {
           flushPage();
         }
-        pageWaves.push(wave);
+        pageWaves.push({ wave, colorIndex });
         usedH += h + 20;
-      }
+      });
       flushPage();
 
       doc.end();
@@ -165,23 +183,29 @@ export class PdfExportService {
     const logoBuffer = await this.fetchLogoBuffer(brand.logoUrl);
     const pm = TABLOID_LANDSCAPE;
 
-    const rows: RosterRow[] = schedule.waves.flatMap((wave) =>
-      wave.categories.flatMap((cat) =>
-        cat.athletes.map((a) => ({
-          name: `${a.lastName}, ${a.firstName}`,
-          firstName: a.firstName,
-          lastName: a.lastName,
-          callUpNumber: a.callUpNumber ?? '',
-          categoryName: cat.categoryName,
-          waveMeetingTime: a.logistics?.waveMeetingTime ?? '',
-          stagingTime: a.logistics?.stagingTime ?? '',
-          raceStart: a.logistics?.raceStart ?? '',
-        })),
-      ),
+    // Grouped by category (preserving the wave/category traversal order from the schedule),
+    // athletes sorted by first name within each category — the category header band carries
+    // the category name, so no per-row category column is needed.
+    let rosterColorIndex = 0;
+    const blocks: RosterCategoryBlock[] = schedule.waves.flatMap((wave) =>
+      wave.categories.map((cat) => ({
+        categoryName: cat.categoryName,
+        colorIndex: rosterColorIndex++,
+        rows: [...cat.athletes]
+          .sort((x, y) => x.firstName.localeCompare(y.firstName) || x.lastName.localeCompare(y.lastName))
+          .map((a) => ({
+            name: `${a.firstName} ${a.lastName}`,
+            firstName: a.firstName,
+            lastName: a.lastName,
+            callUpNumber: a.callUpNumber ?? '',
+            calledUp: a.calledUp,
+            waveMeetingTime: a.logistics?.waveMeetingTime ?? '',
+            stagingTime: a.logistics?.stagingTime ?? '',
+            raceStart: a.logistics?.raceStart ?? '',
+          })),
+      })),
     );
-    rows.sort((x, y) =>
-      x.firstName.localeCompare(y.firstName) || x.lastName.localeCompare(y.lastName),
-    );
+    const totalRows = blocks.reduce((s, b) => s + b.rows.length, 0);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
@@ -194,7 +218,7 @@ export class PdfExportService {
       doc.on('error', reject);
 
       this.renderPageHeader(pm, doc, schedule, brand, logoBuffer, eventLocation);
-      this.renderRosterTable(pm, doc, rows, brand);
+      this.renderRosterTable(pm, doc, blocks, totalRows, brand);
 
       doc.end();
     });
@@ -288,7 +312,14 @@ export class PdfExportService {
   }
 
   // ─── Summary page ─────────────────────────────────────────────────────────
-  private renderSummary(pm: PageMetrics, doc: PDFKit.PDFDocument, schedule: TeamWaveSchedule, brand: PdfBranding): void {
+  private renderSummary(
+    pm: PageMetrics,
+    doc: PDFKit.PDFDocument,
+    schedule: TeamWaveSchedule,
+    brand: PdfBranding,
+    logoBuffer: Buffer | null,
+    eventLocation?: string,
+  ): void {
     // Large title
     doc.fillColor('#000000').fontSize(28).font('Helvetica-Bold');
     doc.text('RIDER PREP &', pm.L, doc.y, { width: pm.CW, align: 'center', lineBreak: false });
@@ -297,43 +328,72 @@ export class PdfExportService {
     doc.text('RACE TIMES', pm.L, doc.y, { width: pm.CW, align: 'center', lineBreak: false });
     doc.y += 44;
 
-    // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athletes.
+    // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athlete Count.
     // Fixed columns take up their share; Category takes whatever content width remains.
-    const fixedCols = [80, 85, 85, 80, 95, 55];
+    const fixedCols = [80, 85, 85, 80, 95, 65];
     const categoryColW = pm.CW - fixedCols.reduce((s, w) => s + w, 0);
     const cols = [fixedCols[0], categoryColW, ...fixedCols.slice(1)];
-    const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', '#'];
+    const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', 'ATHLETE COUNT'];
     const hdrColors = [
-      brand.primaryColor, brand.primaryColor,
+      '#000000', '#000000',
       TIME_COL_COLORS.waveMtg, TIME_COL_COLORS.warmUp,
       TIME_COL_COLORS.stage,   TIME_COL_COLORS.race,
       TIME_COL_COLORS.athletes,
     ];
     const tableW = cols.reduce((s, w) => s + w, 0);
-
-    // Header row — each column gets its own accent color
     const HDR_H = 28;
-    const thY = doc.y;
-    let x = pm.L;
-    for (let i = 0; i < hdrs.length; i++) {
-      doc.rect(x, thY, cols[i], HDR_H).fill(hdrColors[i]);
-      const txtColor = i < 2 ? '#FFFFFF' : '#000000';
-      const centered = i >= 2;
-      doc.fillColor(txtColor).fontSize(9).font('Helvetica-Bold');
-      doc.text(hdrs[i], x + 4, thY + 9, { width: cols[i] - 8, lineBreak: false, align: centered ? 'center' : 'left' });
-      x += cols[i];
-    }
-    doc.y = thY + HDR_H;
+    const footerY = pm.PH - 30;
 
-    // Data rows — height grows to fit however many lines the category list wraps to.
-    // Category and the time/# columns each get a larger, more readable font than the
-    // Wave column, which stays compact since it was never flagged as hard to read.
+    const drawColumnHeaderRow = (): void => {
+      const thY = doc.y;
+      let hx = pm.L;
+      for (let i = 0; i < hdrs.length; i++) {
+        doc.rect(hx, thY, cols[i], HDR_H).fill(hdrColors[i]);
+        const txtColor = i < 2 ? '#FFFFFF' : '#000000';
+        const centered = i >= 2;
+        doc.fillColor(txtColor).font('Helvetica-Bold');
+        if (hdrs[i] === 'ATHLETE COUNT') {
+          // Two lines so the longer label still fits a column sized like its neighbors.
+          doc.fontSize(7.5);
+          this.oneLine(doc, 'ATHLETE', hx + 4, thY + 6, cols[i] - 8, 'center');
+          this.oneLine(doc, 'COUNT', hx + 4, thY + 16, cols[i] - 8, 'center');
+        } else {
+          doc.fontSize(9);
+          doc.text(hdrs[i], hx + 4, thY + 9, { width: cols[i] - 8, lineBreak: false, align: centered ? 'center' : 'left' });
+        }
+        hx += cols[i];
+      }
+      doc.y = thY + HDR_H;
+    };
+
+    drawColumnHeaderRow();
+
+    // Data rows — height grows to fit however many lines the category list wraps to. When
+    // the whole table fits on this page, rows also stretch to fill the remaining space so the
+    // table fills the page like the reference layout; when it doesn't fit, rows stay at their
+    // content-driven height and the table spills onto additional pages instead of silently
+    // overflowing past the page boundary.
     const WAVE_FONT_SIZE = 11;
     const CAT_FONT_SIZE = 14;
     const TIME_FONT_SIZE = 14;
     const ROW_V_PAD = 20;
     const ROW_MIN_H = 46;
-    const tableTopY = thY;
+
+    const contentRowH = (wave: WaveGroup): number => {
+      const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
+      doc.font('Helvetica-Bold').fontSize(CAT_FONT_SIZE);
+      const categoryH = doc.heightOfString(categoryList, { width: cols[1] - 8 });
+      return Math.max(ROW_MIN_H, categoryH + ROW_V_PAD);
+    };
+
+    const totalContentH = schedule.waves.reduce((s, w) => s + contentRowH(w), 0);
+    const singlePageAvail = Math.max(0, footerY - doc.y);
+    const singlePageFits = totalContentH <= singlePageAvail;
+    const stretchRowH = singlePageFits && schedule.waves.length > 0
+      ? singlePageAvail / schedule.waves.length
+      : 0;
+
+    const sepX = pm.L + cols[0] + cols[1];
     let colorIdx = 0;
     for (const wave of schedule.waves) {
       const firstCat = wave.categories[0];
@@ -343,7 +403,13 @@ export class PdfExportService {
 
       doc.font('Helvetica-Bold').fontSize(CAT_FONT_SIZE);
       const categoryH = doc.heightOfString(categoryList, { width: cols[1] - 8 });
-      const ROW_H = Math.max(ROW_MIN_H, categoryH + ROW_V_PAD);
+      const ROW_H = Math.max(ROW_MIN_H, categoryH + ROW_V_PAD, stretchRowH);
+
+      if (doc.y + ROW_H > footerY) {
+        doc.addPage();
+        this.renderPageHeader(pm, doc, schedule, brand, logoBuffer, eventLocation);
+        drawColumnHeaderRow();
+      }
 
       const rowY = doc.y;
       const rowColor = ROW_COLORS[colorIdx % ROW_COLORS.length];
@@ -362,7 +428,7 @@ export class PdfExportService {
         firstCat?.startTime ? formatTime12Hour(firstCat.startTime) : '—',
         String(athleteCount),
       ];
-      x = pm.L;
+      let x = pm.L;
       for (let i = 0; i < rowVals.length; i++) {
         const bold = i < 2;
         const centered = i >= 2;
@@ -373,19 +439,21 @@ export class PdfExportService {
         doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
         const ty = rowY + (allowWrap ? (ROW_H - categoryH) / 2 : (ROW_H - fontSize) / 2);
         if (allowWrap) {
-          doc.text(rowVals[i], x + 4, ty, { width: cols[i] - 8, align: centered ? 'center' : 'left' });
+          // allowWrap only applies to the category column (i===1), which centered (i>=2) never is.
+          doc.text(rowVals[i], x + 4, ty, { width: cols[i] - 8, align: 'left' });
         } else {
           this.oneLine(doc, rowVals[i], x + 4, ty, cols[i] - 8, centered ? 'center' : 'left');
         }
         x += cols[i];
       }
+
+      // Separator line between the identifying columns (Wave/Category) and the schedule-data
+      // columns — drawn per row (rather than once for the whole table) so it stays correct
+      // across a page break.
+      doc.moveTo(sepX, rowY).lineTo(sepX, rowY + ROW_H).lineWidth(1).strokeColor('#BBBBBB').stroke();
+
       doc.y = rowY + ROW_H;
     }
-
-    // Separator line between the identifying columns (Wave/Category) and the
-    // schedule-data columns (times, athlete count).
-    const sepX = pm.L + cols[0] + cols[1];
-    doc.moveTo(sepX, tableTopY).lineTo(sepX, doc.y).lineWidth(1).strokeColor('#BBBBBB').stroke();
 
     // Footer
     doc.fontSize(7).fillColor('#999999').font('Helvetica');
@@ -422,15 +490,17 @@ export class PdfExportService {
   }
 
   // ─── Individual wave block (banner + timing + category columns) ───────────
-  private renderWave(pm: PageMetrics, doc: PDFKit.PDFDocument, wave: WaveGroup, brand: PdfBranding): void {
+  private renderWave(
+    pm: PageMetrics, doc: PDFKit.PDFDocument, wave: WaveGroup, waveColorIndex: number, brand: PdfBranding,
+  ): void {
     const tableW = pm.CW;
     const firstCat = wave.categories[0];
     const logistics = firstCat?.athletes[0]?.logistics;
 
-    // Wave name banner
+    // Wave name banner — colored to match this wave's row on the summary page.
     const waveY = doc.y;
-    doc.rect(pm.L, waveY, tableW, 36).fill(brand.primaryColor);
-    doc.fillColor('#FFFFFF').fontSize(19).font('Helvetica-Bold');
+    doc.rect(pm.L, waveY, tableW, 36).fill(ROW_COLORS[waveColorIndex % ROW_COLORS.length]);
+    doc.fillColor('#000000').fontSize(19).font('Helvetica-Bold');
     this.oneLine(doc, wave.waveName, pm.L + 10, waveY + 9, tableW - 20);
     doc.y = waveY + 36;
 
@@ -512,12 +582,14 @@ export class PdfExportService {
     // block (header, column labels, athlete rows) so their left edges all line up.
     const PAD = 8;
     const GAP = 4;
-    const nameW = 140;
-    const stagingW = 40;
-    const bibW = 56; // PAD + nameW + GAP + stagingW + GAP + bibW + PAD === colW
-    const nameX = cx + PAD;
-    const stagingX = nameX + nameW + GAP;
-    const bibX = stagingX + stagingW + GAP;
+    const callupW = 44; // wide enough for the "CALLUP #" header at 8pt bold
+    const firstW = 80;
+    const lastW = 76;
+    const bibW = 32; // PAD + callupW + GAP + firstW + GAP + lastW + GAP + bibW + PAD === colW
+    const callupX = cx + PAD;
+    const firstX = callupX + callupW + GAP;
+    const lastX = firstX + firstW + GAP;
+    const bibX = lastX + lastW + GAP;
 
     const HEADER_H = PdfExportService.CAT_HEADER_H;
     const COLHDR_H = PdfExportService.CAT_COLHDR_H;
@@ -535,126 +607,199 @@ export class PdfExportService {
     const topPad = (HEADER_H - (nameLineH + subLineH)) / 2;
 
     doc.fillColor('#222222').fontSize(NAME_FONT).font('Helvetica-Bold');
-    this.oneLine(doc, `${cat.categoryName}  (${cat.athletes.length})`, nameX, y + topPad, colW - PAD * 2);
+    this.oneLine(doc, `${cat.categoryName}  (${cat.athletes.length})`, callupX, y + topPad, colW - PAD * 2);
     doc.fillColor('#444444').fontSize(SUB_FONT).font('Helvetica');
     const stageTime = cat.athletes[0]?.logistics?.stagingTime;
     this.oneLine(
       doc,
       `Stage: ${stageTime ? formatTime12Hour(stageTime) : '—'}   Race: ${formatTime12Hour(cat.startTime)}   ${cat.laps ?? '—'} laps`,
-      nameX, y + topPad + nameLineH, colW - PAD * 2,
+      callupX, y + topPad + nameLineH, colW - PAD * 2,
     );
     y += HEADER_H;
 
     // Column headers
     doc.rect(cx, y, colW, COLHDR_H).fill('#E0E0E0');
     doc.fillColor('#555555').fontSize(8).font('Helvetica-Bold');
-    this.oneLine(doc, 'ATHLETE', nameX, y + 4, nameW);
-    this.oneLine(doc, 'STG #', stagingX, y + 4, stagingW);
-    this.oneLine(doc, 'BIB', bibX, y + 4, bibW);
+    const colHdrTy = y + (COLHDR_H - 8) / 2;
+    this.oneLine(doc, 'CALLUP #', callupX, colHdrTy, callupW);
+    this.oneLine(doc, 'FIRST', firstX, colHdrTy, firstW);
+    this.oneLine(doc, 'LAST', lastX, colHdrTy, lastW);
+    this.oneLine(doc, 'BIB #', bibX, colHdrTy, bibW);
     y += COLHDR_H;
 
     // Athlete rows
     for (let r = 0; r < cat.athletes.length; r++) {
-      if (r % 2 === 1) {
-        doc.rect(cx, y, colW, ROW_H).fill('#F5F5F5');
-      }
-      doc.fillColor('#000000').fontSize(9).font('Helvetica');
       const a = cat.athletes[r];
-      this.oneLine(doc, `${a.lastName}, ${a.firstName}`, nameX, y + 3, nameW);
-      this.oneLine(doc, a.callUpNumber ?? '—', stagingX, y + 3, stagingW);
-      this.oneLine(doc, a.bibNumber, bibX, y + 3, bibW);
+      const stripe = r % 2 === 1;
+      const bg = a.calledUp ? CALLED_UP_ROW_COLORS[r % 2] : (stripe ? '#F5F5F5' : null);
+      if (bg) doc.rect(cx, y, colW, ROW_H).fill(bg);
+
+      doc.fillColor('#000000').fontSize(9).font('Helvetica');
+      const rowTy = y + (ROW_H - 9) / 2;
+      this.oneLine(doc, a.callUpNumber ?? '—', callupX, rowTy, callupW);
+      this.oneLine(doc, a.firstName, firstX, rowTy, firstW);
+      this.oneLine(doc, a.lastName, lastX, rowTy, lastW);
+      this.oneLine(doc, a.bibNumber, bibX, rowTy, bibW);
       y += ROW_H;
     }
 
     return y;
   }
 
-  // ─── Check-in roster table: N side-by-side columns, sized to fit one page ─
+  // ─── Check-in roster table: category blocks flowed down N side-by-side ────
+  // ─── columns (newspaper order), sized to fit one page ──────────────────────
   private renderRosterTable(
     pm: PageMetrics,
     doc: PDFKit.PDFDocument,
-    rows: RosterRow[],
+    blocks: RosterCategoryBlock[],
+    totalRows: number,
     brand: PdfBranding,
   ): void {
     const titleY = doc.y;
     doc.fillColor('#000000').fontSize(20).font('Helvetica-Bold');
-    this.oneLine(doc, `CHECK-IN ROSTER  (${rows.length} athletes)`, pm.L, titleY, pm.CW);
+    this.oneLine(doc, `CHECK-IN ROSTER  (${totalRows} athletes)`, pm.L, titleY, pm.CW);
     doc.y = titleY + 30;
 
     const tableTop = doc.y;
     const availH = pm.PH - 20 - tableTop;
+    if (totalRows === 0 || blocks.length === 0) return;
+
     const MAX_COLS = 4;
-    const MIN_ROW_H = 11;
+    const MIN_ROW_H = 8;
+    const MAX_ROW_H = 16;
     const GAP = 16;
     const HDR_ROW_H = 18;
+    const CAT_HDR_H = 16;
+    const perColBudget = availH - HDR_ROW_H;
 
-    let colCount = MAX_COLS;
-    let rowH = MIN_ROW_H;
-    for (let c = 1; c <= MAX_COLS; c++) {
-      const rowsPerCol = Math.ceil(rows.length / c) || 1;
-      const candidateRowH = (availH - HDR_ROW_H) / rowsPerCol;
-      if (candidateRowH >= MIN_ROW_H || c === MAX_COLS) {
-        colCount = c;
-        rowH = Math.max(candidateRowH, 8);
-        break;
+    // Greedy contiguous fill: whole category blocks accumulate into the current column until
+    // the next one would overflow the FULL column height (not an even fraction of it) — a
+    // column is only ever closed because it's actually full, so unlike splitting content into
+    // a fixed number of even shares up front, this can't silently pile every leftover category
+    // into one column while others sit mostly empty.
+    const packColumns = (rowH: number): RosterCategoryBlock[][] => {
+      const blockHeight = (b: RosterCategoryBlock) => CAT_HDR_H + b.rows.length * rowH;
+      const cols: RosterCategoryBlock[][] = [];
+      let currentCol: RosterCategoryBlock[] = [];
+      let currentH = 0;
+      for (const block of blocks) {
+        const h = blockHeight(block);
+        if (currentCol.length > 0 && currentH + h > perColBudget) {
+          cols.push(currentCol);
+          currentCol = [];
+          currentH = 0;
+        }
+        currentCol.push(block);
+        currentH += h;
       }
+      if (currentCol.length > 0) cols.push(currentCol);
+      return cols;
+    };
+
+    // Start at the most readable row height and shrink only as far as needed to make the
+    // packing fit within MAX_COLS columns — larger fields naturally need a smaller font.
+    let rowH = MAX_ROW_H;
+    let columns = packColumns(rowH);
+    while (columns.length > MAX_COLS && rowH > MIN_ROW_H) {
+      rowH -= 1;
+      columns = packColumns(rowH);
+    }
+    // Extreme case (more categories than even MIN_ROW_H/MAX_COLS can hold): merge any excess
+    // columns into the last one rather than losing categories off the rendered page entirely.
+    if (columns.length > MAX_COLS) {
+      columns = [...columns.slice(0, MAX_COLS - 1), columns.slice(MAX_COLS - 1).flat()];
     }
 
     const fontSize = Math.max(6, Math.min(9, rowH - 3));
+    const colCount = Math.max(1, columns.length);
     const colW = (pm.CW - (colCount - 1) * GAP) / colCount;
-    const rowsPerCol = Math.ceil(rows.length / colCount) || 1;
 
-    // Sub-columns within each roster column, as fractions of colW
-    const SUB_COLS: { key: keyof RosterRow | 'box'; label: string; frac: number; align: 'left' | 'center' }[] = [
-      { key: 'name', label: 'NAME', frac: 0.30, align: 'left' },
-      { key: 'callUpNumber', label: 'CALLUP #', frac: 0.09, align: 'center' },
-      { key: 'categoryName', label: 'CATEGORY', frac: 0.22, align: 'left' },
-      { key: 'waveMeetingTime', label: 'MTG', frac: 0.11, align: 'center' },
-      { key: 'stagingTime', label: 'STAGE', frac: 0.11, align: 'center' },
-      { key: 'raceStart', label: 'START', frac: 0.10, align: 'center' },
-      { key: 'box', label: 'IN', frac: 0.07, align: 'center' },
+    // Sub-columns within each roster column — no per-row CATEGORY column since the category
+    // header band above each group already carries that. Widths are content-driven (the
+    // widest of the header label and a worst-case data value, at whatever fontSize this
+    // roster ended up with) rather than fixed fractions, so a narrow column count doesn't
+    // silently truncate times/callup numbers; NAME absorbs whatever width remains.
+    const SUB_COLS: { key: keyof RosterRow | 'box'; label: string; align: 'left' | 'center' }[] = [
+      { key: 'name', label: 'NAME', align: 'left' },
+      { key: 'callUpNumber', label: 'CALLUP #', align: 'center' },
+      { key: 'waveMeetingTime', label: 'MTG', align: 'center' },
+      { key: 'stagingTime', label: 'STAGE', align: 'center' },
+      { key: 'raceStart', label: 'START', align: 'center' },
+      { key: 'box', label: 'IN', align: 'center' },
     ];
-    const subW = SUB_COLS.map((sc) => colW * sc.frac);
+    const contentW = (label: string, sampleData: string): number => {
+      doc.font('Helvetica-Bold').fontSize(7);
+      const hdrW = doc.widthOfString(label);
+      doc.font('Helvetica').fontSize(fontSize);
+      const dataW = doc.widthOfString(sampleData);
+      return Math.max(hdrW, dataW) + 8;
+    };
+    const nonNameW = {
+      callUpNumber: contentW('CALLUP #', '000'),
+      waveMeetingTime: contentW('MTG', '10:20 AM'),
+      stagingTime: contentW('STAGE', '10:20 AM'),
+      raceStart: contentW('START', '10:20 AM'),
+      box: Math.max(16, fontSize + 6),
+    };
+    const nameW = Math.max(60, colW - Object.values(nonNameW).reduce((s, w) => s + w, 0));
+    const subW = SUB_COLS.map((sc) => (sc.key === 'name' ? nameW : nonNameW[sc.key as keyof typeof nonNameW]));
 
-    for (let c = 0; c < colCount; c++) {
+    columns.forEach((colBlocks, c) => {
       const colX = pm.L + c * (colW + GAP);
-      const colRows = rows.slice(c * rowsPerCol, (c + 1) * rowsPerCol);
+      let y = tableTop;
 
       // Column header
-      let y = tableTop;
       doc.rect(colX, y, colW, HDR_ROW_H).fill(brand.primaryColor);
       doc.fillColor('#FFFFFF').fontSize(7).font('Helvetica-Bold');
       let hx = colX;
+      const hdrTy = y + (HDR_ROW_H - 7) / 2;
       for (let s = 0; s < SUB_COLS.length; s++) {
-        this.oneLine(doc, SUB_COLS[s].label, hx + 2, y + 5, subW[s] - 4, SUB_COLS[s].align);
+        this.oneLine(doc, SUB_COLS[s].label, hx + 2, hdrTy, subW[s] - 4, SUB_COLS[s].align);
         hx += subW[s];
       }
       y += HDR_ROW_H;
 
-      // Data rows
-      for (let r = 0; r < colRows.length; r++) {
-        const row = colRows[r];
-        if (r % 2 === 1) doc.rect(colX, y, colW, rowH).fill('#F5F5F5');
+      for (const block of colBlocks) {
+        // Category header band — cycles through a pastel palette, reset stripe index below.
+        const catColor = ROW_COLORS[block.colorIndex % ROW_COLORS.length];
+        doc.rect(colX, y, colW, CAT_HDR_H).fill(catColor);
+        const catFontSize = Math.min(9, CAT_HDR_H - 4);
+        doc.fillColor('#000000').fontSize(catFontSize).font('Helvetica-Bold');
+        this.oneLine(
+          doc, `${block.categoryName}  (${block.rows.length})`,
+          colX + 4, y + (CAT_HDR_H - catFontSize) / 2, colW - 8,
+        );
+        y += CAT_HDR_H;
 
-        let cx = colX;
-        for (let s = 0; s < SUB_COLS.length; s++) {
-          const sc = SUB_COLS[s];
-          if (sc.key === 'box') {
-            const boxSize = Math.min(subW[s] - 4, rowH - 4);
-            doc.rect(cx + (subW[s] - boxSize) / 2, y + (rowH - boxSize) / 2, boxSize, boxSize)
-              .lineWidth(0.75).stroke('#000000');
-          } else {
-            const raw = row[sc.key] as string;
-            const isTime = sc.key === 'waveMeetingTime' || sc.key === 'stagingTime' || sc.key === 'raceStart';
-            const val = isTime ? (raw ? formatTime12Hour(raw) : '—') : (raw || '—');
-            doc.fillColor('#000000').font('Helvetica').fontSize(fontSize);
-            this.oneLine(doc, val, cx + 2, y + 1, subW[s] - 4, sc.align);
+        // Data rows — striping resets at the top of each category so the boundary reads clearly.
+        for (let r = 0; r < block.rows.length; r++) {
+          const row = block.rows[r];
+          const stripe = r % 2 === 1;
+          const bg = row.calledUp
+            ? CALLED_UP_ROW_COLORS[r % 2]
+            : (stripe ? '#F5F5F5' : null);
+          if (bg) doc.rect(colX, y, colW, rowH).fill(bg);
+
+          let cx = colX;
+          for (let s = 0; s < SUB_COLS.length; s++) {
+            const sc = SUB_COLS[s];
+            if (sc.key === 'box') {
+              const boxSize = Math.min(subW[s] - 4, rowH - 4);
+              doc.rect(cx + (subW[s] - boxSize) / 2, y + (rowH - boxSize) / 2, boxSize, boxSize)
+                .lineWidth(0.75).stroke('#000000');
+            } else {
+              const raw = row[sc.key] as string;
+              const isTime = sc.key === 'waveMeetingTime' || sc.key === 'stagingTime' || sc.key === 'raceStart';
+              const val = isTime ? (raw ? formatTime12Hour(raw) : '—') : (raw || '—');
+              doc.fillColor('#000000').font('Helvetica').fontSize(fontSize);
+              this.oneLine(doc, val, cx + 2, y + (rowH - fontSize) / 2, subW[s] - 4, sc.align);
+            }
+            cx += subW[s];
           }
-          cx += subW[s];
+          y += rowH;
         }
-        y += rowH;
       }
-    }
+    });
   }
 
   // ─── Pocket printout: one group per wave, categories sorted by start time, ─
@@ -667,9 +812,9 @@ export class PdfExportService {
         .map((cat) => ({
           categoryName: cat.categoryName,
           startTime: cat.startTime,
-          athleteNames: [...cat.athletes]
+          athletes: [...cat.athletes]
             .sort((x, y) => x.firstName.localeCompare(y.firstName) || x.lastName.localeCompare(y.lastName))
-            .map((a) => `${a.lastName}, ${a.firstName}`),
+            .map((a) => ({ name: `${a.firstName} ${a.lastName}`, bibNumber: a.bibNumber })),
         })),
     }));
   }
@@ -743,9 +888,14 @@ export class PdfExportService {
     this.oneLine(doc, formatTime12Hour(cat.startTime), cx, y + 10, colW);
     y += POCKET_CAT_HDR_H;
 
-    for (const name of cat.athleteNames) {
+    const bibW = 28;
+    const nameW = colW - bibW;
+    for (let r = 0; r < cat.athletes.length; r++) {
+      const athlete = cat.athletes[r];
+      if (r % 2 === 1) doc.rect(cx, y, colW, POCKET_ATHLETE_ROW_H).fill('#F5F5F5');
       doc.fillColor('#000000').font('Helvetica').fontSize(8.5);
-      this.oneLine(doc, name, cx, y, colW);
+      this.oneLine(doc, athlete.name, cx, y, nameW);
+      this.oneLine(doc, athlete.bibNumber, cx + nameW, y, bibW, 'right');
       y += POCKET_ATHLETE_ROW_H;
     }
 

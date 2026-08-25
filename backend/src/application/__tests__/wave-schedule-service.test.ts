@@ -121,6 +121,26 @@ describe('WaveScheduleService', () => {
     expect(schedule.waves[schedule.waves.length - 1].waveName).toBe('Unknown Category');
   });
 
+  it('keeps relative order stable when two waves both have no known start time', () => {
+    const noStartParticipants: RaceParticipant[] = [
+      { firstName: 'A', lastName: 'A', team: 'Brighton', category: 'Mystery One', bibNumber: '1', callUpNumber: '1' },
+      { firstName: 'B', lastName: 'B', team: 'Brighton', category: 'Mystery Two', bibNumber: '2', callUpNumber: '1' },
+    ];
+    // Neither category appears in categorySchedule, so neither wave has a known start time.
+    const schedule = service.generateSchedule('Brighton', noStartParticipants, [], {}, 'Test', '2026-08-02');
+    expect(schedule.waves.map((w) => w.waveName)).toEqual(['Mystery One', 'Mystery Two']);
+  });
+
+  it('sorts a wave with a known start time ahead of one with no known start time', () => {
+    const mixedParticipants: RaceParticipant[] = [
+      { firstName: 'A', lastName: 'A', team: 'Brighton', category: 'Known Category', bibNumber: '1', callUpNumber: '1' },
+      { firstName: 'B', lastName: 'B', team: 'Brighton', category: 'Unscheduled Category', bibNumber: '2', callUpNumber: '1' },
+    ];
+    const sched: Record<string, CategorySchedule> = { 'Known Category': { stageTime: '08:00', startTime: '08:20' } };
+    const schedule = service.generateSchedule('Brighton', mixedParticipants, [], sched, 'Test', '2026-08-02');
+    expect(schedule.waves.map((w) => w.waveName)).toEqual(['Known Category', 'Unscheduled Category']);
+  });
+
   it('TC-035: omit waves with no athletes from selected team', () => {
     const schedule = service.generateSchedule('Brighton', participants, waveConfig, categorySchedule, 'Test', '2026-08-02');
     // Brighton has no athletes in Wave 2 (JV A Boys) — Wave 2 should not appear
@@ -158,5 +178,101 @@ describe('WaveScheduleService', () => {
     // Both Smiths are sorted by first name: Amy before Zack
     expect(athletes[1].firstName).toBe('Amy');
     expect(athletes[2].firstName).toBe('Zack');
+  });
+
+  describe('call-up threshold by field size', () => {
+    function scheduleForFieldSize(fieldSize: number) {
+      const config: WaveConfig[] = [
+        {
+          configId: 'w1', organizationId: 'GLOBAL', waveName: 'Wave 1',
+          entries: [{ categoryName: 'Open', stageTime: '08:00', startTime: '08:20', laps: 1 }],
+          createdAt: '', updatedAt: '',
+        },
+      ];
+      const ps: RaceParticipant[] = Array.from({ length: fieldSize }, (_, i) => ({
+        firstName: `F${i}`, lastName: `L${i}`, team: 'Team', category: 'Open',
+        bibNumber: String(i), callUpNumber: String(i + 1),
+      }));
+      const sched: Record<string, CategorySchedule> = { Open: { stageTime: '08:00', startTime: '08:20' } };
+      return service.generateSchedule('Team', ps, config, sched, 'Event', '2026-08-02');
+    }
+
+    function calledUpCount(fieldSize: number): number {
+      const schedule = scheduleForFieldSize(fieldSize);
+      return schedule.waves[0].categories[0].athletes.filter((a) => a.calledUp).length;
+    }
+
+    it('calls up the top 5 for a field of 24 or fewer', () => {
+      expect(calledUpCount(24)).toBe(5);
+      expect(calledUpCount(1)).toBe(1);
+    });
+
+    it('calls up the top 10 for a field of 25-49', () => {
+      expect(calledUpCount(25)).toBe(10);
+      expect(calledUpCount(49)).toBe(10);
+    });
+
+    it('calls up the top 15 for a field of 50-74', () => {
+      expect(calledUpCount(50)).toBe(15);
+      expect(calledUpCount(74)).toBe(15);
+    });
+
+    it('calls up the top 20 for a field of 75 or more', () => {
+      expect(calledUpCount(75)).toBe(20);
+      expect(calledUpCount(120)).toBe(20);
+    });
+
+    it('marks exactly the lowest callUpNumber riders as called up, not an arbitrary subset', () => {
+      const schedule = scheduleForFieldSize(24);
+      const athletes = schedule.waves[0].categories[0].athletes;
+      const calledUpNumbers = athletes.filter((a) => a.calledUp).map((a) => Number(a.callUpNumber)).sort((a, b) => a - b);
+      expect(calledUpNumbers).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it('bases field size on the whole race field for a category, not just the selected team', () => {
+      // Category "Open" has 30 participants total across two teams — a field size that should
+      // call up the top 10 — but only 3 of them are on "Home Team", with callUpNumber 7-9. If
+      // field size were computed from the team-filtered list (3 riders) instead of the whole
+      // field, the threshold would wrongly drop to 5 and miss all three of them.
+      const config: WaveConfig[] = [
+        {
+          configId: 'w1', organizationId: 'GLOBAL', waveName: 'Wave 1',
+          entries: [{ categoryName: 'Open', stageTime: '08:00', startTime: '08:20', laps: 1 }],
+          createdAt: '', updatedAt: '',
+        },
+      ];
+      const otherTeamRiders: RaceParticipant[] = Array.from({ length: 27 }, (_, i) => ({
+        firstName: `Other${i}`, lastName: `L${i}`, team: 'Away Team', category: 'Open',
+        bibNumber: String(100 + i), callUpNumber: String(i < 6 ? i + 1 : i + 4), // 1-6, then 10-30
+      }));
+      const homeTeamRiders: RaceParticipant[] = [
+        { firstName: 'A', lastName: 'A', team: 'Home Team', category: 'Open', bibNumber: '1', callUpNumber: '7' },
+        { firstName: 'B', lastName: 'B', team: 'Home Team', category: 'Open', bibNumber: '2', callUpNumber: '8' },
+        { firstName: 'C', lastName: 'C', team: 'Home Team', category: 'Open', bibNumber: '3', callUpNumber: '9' },
+      ];
+      const ps = [...homeTeamRiders, ...otherTeamRiders];
+      const sched: Record<string, CategorySchedule> = { Open: { stageTime: '08:00', startTime: '08:20' } };
+      const schedule = service.generateSchedule('Home Team', ps, config, sched, 'Event', '2026-08-02');
+      // Field size = 30 (all teams) → threshold 10, so all 3 Home Team riders (callUpNumber 7-9) qualify —
+      // they would NOT qualify under a threshold of 5 computed from just their own 3-rider contingent.
+      const calledUp = schedule.waves[0].categories[0].athletes.filter((a) => a.calledUp);
+      expect(calledUp).toHaveLength(3);
+    });
+
+    it('never calls up an athlete with a missing or non-numeric callUpNumber', () => {
+      const config: WaveConfig[] = [
+        {
+          configId: 'w1', organizationId: 'GLOBAL', waveName: 'Wave 1',
+          entries: [{ categoryName: 'Open', stageTime: '08:00', startTime: '08:20', laps: 1 }],
+          createdAt: '', updatedAt: '',
+        },
+      ];
+      const ps: RaceParticipant[] = [
+        { firstName: 'A', lastName: 'A', team: 'Team', category: 'Open', bibNumber: '1', callUpNumber: null },
+      ];
+      const sched: Record<string, CategorySchedule> = { Open: { stageTime: '08:00', startTime: '08:20' } };
+      const schedule = service.generateSchedule('Team', ps, config, sched, 'Event', '2026-08-02');
+      expect(schedule.waves[0].categories[0].athletes[0].calledUp).toBe(false);
+    });
   });
 });

@@ -12,6 +12,15 @@ export interface CategorySchedule {
   startTime: string;
 }
 
+// How many riders are called up by name at the start line scales with field size — a bigger
+// field gets a deeper call-up to keep the front row meaningful.
+function callUpThreshold(fieldSize: number): number {
+  if (fieldSize <= 24) return 5;
+  if (fieldSize <= 49) return 10;
+  if (fieldSize <= 74) return 15;
+  return 20;
+}
+
 export class WaveScheduleService {
   generateSchedule(
     teamName: string,
@@ -36,6 +45,14 @@ export class WaveScheduleService {
       };
     }
 
+    // Field size for the call-up threshold is the whole race's start-line headcount for a
+    // category (every team combined) — not just this team's contingent — since call-up depth
+    // reflects who gets called out by name at the actual start, not a per-team subset.
+    const categoryFieldSize = new Map<string, number>();
+    for (const p of participants) {
+      categoryFieldSize.set(p.category, (categoryFieldSize.get(p.category) ?? 0) + 1);
+    }
+
     // WaveConfig now only supplies which named wave a category belongs to, and its lap count.
     // Per-category stage/start times come from categorySchedule (the uploaded call-up list).
     const groupMap = this.buildCategoryGroupMap(waveConfig);
@@ -52,6 +69,7 @@ export class WaveScheduleService {
         lastName: p.lastName,
         bibNumber: p.bibNumber,
         callUpNumber: p.callUpNumber,
+        calledUp: false, // set below once each category's field size is known
       };
 
       const waveName = groupMap.get(p.category)?.waveName ?? p.category;
@@ -85,6 +103,17 @@ export class WaveScheduleService {
           const lastCmp = a.lastName.localeCompare(b.lastName);
           return lastCmp !== 0 ? lastCmp : a.firstName.localeCompare(b.firstName);
         });
+
+        // Field size (this category's whole-race start-line headcount) determines how many
+        // riders are called up by name; callUpNumber ranks the field, so the lowest N are called up.
+        // categoryFieldSize is guaranteed to have this category: it's built from `participants`,
+        // and categoryName only exists here because at least one teamParticipants row (a subset
+        // of participants) has it.
+        const threshold = callUpThreshold(categoryFieldSize.get(categoryName)!);
+        for (const a of athletes) {
+          const n = a.callUpNumber === null ? NaN : Number(a.callUpNumber);
+          a.calledUp = Number.isInteger(n) && n > 0 && n <= threshold;
+        }
 
         categories.push({
           categoryName,

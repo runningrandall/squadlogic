@@ -52,6 +52,7 @@ export interface ScheduleAthlete {
   lastName: string;
   bibNumber: string;
   callUpNumber: string | null;
+  calledUp: boolean;
   logistics?: AthleteLogistics;
 }
 
