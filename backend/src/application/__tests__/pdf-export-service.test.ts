@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { PdfExportService } from '../pdf-export-service.js';
-import { getPdfPageCount, getPdfText } from './pdf-test-utils.js';
+import { getPdfPageCount, getPdfText, getFillColorSequence } from './pdf-test-utils.js';
 import type { TeamWaveSchedule } from '../../domain/race-event.js';
+
+// Mirrors the module-private ROW_COLORS palette in pdf-export-service.ts.
+const WAVE_PALETTE = [
+  '#b3e5fc', '#c8e6c9', '#fff9c4', '#ffe0b2', '#f8bbd0', '#e1bee7', '#b2ebf2', '#ffccbc',
+];
 
 const service = new PdfExportService();
 
@@ -241,12 +246,12 @@ describe('PdfExportService', () => {
     expect(text).not.toContain('Adams, Dave');
   });
 
-  it('shows the category header\'s stage and race-start times on separate labeled lines', async () => {
+  it('shows each category\'s wave name, stage time, and start time in its header', async () => {
     const buffer = await service.generatePdf(schedule);
     const text = await getPdfText(buffer);
-    expect(text).toContain('STAGE: 9:50 AM');
-    expect(text).toContain('RACE START: 10:10 AM');
-    expect(text).toContain('4 LAPS');
+    expect(text).toContain('Wave 3 - HS');
+    expect(text).toContain('STG 9:50 AM');
+    expect(text).toContain('START 10:10 AM');
   });
 
   it('renders the title as a single line', async () => {
@@ -315,11 +320,60 @@ describe('PdfExportService', () => {
     expect(text).toContain('—');
   });
 
-  it('renders an empty schedule (no waves) without error', async () => {
+  it('gives two categories in the same wave the same header color on the detail page', async () => {
+    const sameWaveTwoCats: TeamWaveSchedule = {
+      ...schedule,
+      waves: [
+        {
+          waveName: 'Wave 1 - HS',
+          categories: [
+            { categoryName: 'Varsity Boys', stageTime: '09:50', startTime: '10:10', laps: 4,
+              athletes: [{ firstName: 'Dave', lastName: 'Adams', bibNumber: '201', callUpNumber: '1', calledUp: false }] },
+            { categoryName: 'Varsity Girls', stageTime: '09:55', startTime: '10:15', laps: 3,
+              athletes: [{ firstName: 'Amy', lastName: 'Baker', bibNumber: '301', callUpNumber: '1', calledUp: false }] },
+          ],
+        },
+      ],
+    };
+    const buffer = await service.generateSchedulePdf(sameWaveTwoCats);
+    // Page 2 is the all-waves detail page.
+    const colors = await getFillColorSequence(buffer, 2);
+    const paletteHits = colors.filter((c) => WAVE_PALETTE.includes(c.toLowerCase()));
+    // Both category header bands use colorIndex 0 (their shared wave's index), so every
+    // palette hit on this page should be the same single color.
+    expect(new Set(paletteHits).size).toBe(1);
+  });
+
+  it('fits many categories across many waves on the single all-waves detail page', async () => {
+    const manyCategoriesSchedule: TeamWaveSchedule = {
+      teamName: 'Wasatch',
+      eventName: 'UTAH HS MTB 2026 - Region 5',
+      eventDate: '2026-08-22',
+      totalAthletes: 60,
+      waves: Array.from({ length: 10 }, (_, w) => ({
+        waveName: `Wave ${w + 1}`,
+        categories: Array.from({ length: 2 }, (_, c) => ({
+          categoryName: `Wave ${w + 1} Category ${c}`,
+          stageTime: '08:00', startTime: '08:00', laps: 1,
+          athletes: Array.from({ length: 3 }, (_, i) => ({
+            firstName: `F${w}_${c}_${i}`, lastName: `L${w}_${c}_${i}`,
+            bibNumber: String(w * 100 + c * 10 + i), callUpNumber: '1', calledUp: false,
+          })),
+        })),
+      })),
+    };
+    const buffer = await service.generateSchedulePdf(manyCategoriesSchedule);
+    expect(await getPdfPageCount(buffer)).toBe(2);
+    const text = await getPdfText(await service.generateSchedulePdf(manyCategoriesSchedule));
+    expect(text).toContain('Wave 1 Category 0');
+    expect(text).toContain('Wave 10 Category 1');
+  });
+
+  it('renders an empty schedule (no waves) without error, still as summary + detail', async () => {
     const emptySchedule: TeamWaveSchedule = { ...schedule, totalAthletes: 0, waves: [] };
     const buffer = await service.generateSchedulePdf(emptySchedule);
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
-    expect(await getPdfPageCount(buffer)).toBe(1);
+    expect(await getPdfPageCount(buffer)).toBe(2);
   });
 
   it('shows an em-dash when a category has no known start time', async () => {
@@ -345,7 +399,7 @@ describe('PdfExportService', () => {
     expect(text).toContain('—');
   });
 
-  describe('Tabloid wave packing', () => {
+  describe('exactly 2 pages: rotated summary + rotated all-waves detail', () => {
     function mkWave(waveName: string, startTime: string, athleteCount: number) {
       return {
         waveName,
@@ -366,7 +420,7 @@ describe('PdfExportService', () => {
       };
     }
 
-    it('packs two small waves onto a single content page (1 summary + 1 content = 2 pages)', async () => {
+    it('produces exactly 2 pages for a small, realistic schedule', async () => {
       const twoSmallWaves: TeamWaveSchedule = {
         ...schedule,
         waves: [mkWave('Wave 7 - JD', '14:30', 1), mkWave('Wave 9 - JD', '15:50', 2)],
@@ -375,43 +429,31 @@ describe('PdfExportService', () => {
       expect(await getPdfPageCount(buffer)).toBe(2);
     });
 
-    it('gives a very large wave its own page rather than force-packing it', async () => {
+    it('still fits a very large wave on the single detail page without dropping any athlete', async () => {
       const oneHugeWave: TeamWaveSchedule = {
         ...schedule,
         waves: [mkWave('Wave 1 - HS', '08:00', 60), mkWave('Wave 2 - HS', '09:00', 2)],
       };
-      const buffer = await service.generateSchedulePdf(oneHugeWave);
-      // 1 summary page + at least 1 content page; the huge wave should not be squeezed
-      // onto the same page as the small one if it wouldn't fit.
-      expect(await getPdfPageCount(buffer)).toBeGreaterThanOrEqual(2);
+      // pdfjs detaches the source ArrayBuffer after loading, so a fresh buffer is generated
+      // per assertion rather than reusing one buffer across two loads.
+      expect(await getPdfPageCount(await service.generateSchedulePdf(oneHugeWave))).toBe(2);
+      const text = await getPdfText(await service.generateSchedulePdf(oneHugeWave));
+      expect(text).toContain('F0');
+      expect(text).toContain('F59');
     });
 
     it('spills the summary page onto a second page when there are too many waves to fit one page', async () => {
       const manyWaves: TeamWaveSchedule = {
         ...schedule,
-        waves: Array.from({ length: 20 }, (_, i) => mkWave(`Wave ${i + 1}`, `${8 + Math.floor(i / 4)}:${(i % 4) * 15}0`, 1)),
+        waves: Array.from({ length: 30 }, (_, i) => mkWave(`Wave ${i + 1}`, `${8 + Math.floor(i / 4)}:${(i % 4) * 15}0`, 1)),
       };
       const buffer = await service.generateSchedulePdf(manyWaves);
       expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
-      const text = await getPdfText(buffer);
-      // Every wave's name should still appear even though the summary table itself needed
-      // to spill onto a second page (20 waves at min row height don't fit one page).
+      // 2 summary pages (30 waves at min row height don't fit one) + 1 all-waves detail page.
+      expect(await getPdfPageCount(await service.generateSchedulePdf(manyWaves))).toBe(3);
+      const text = await getPdfText(await service.generateSchedulePdf(manyWaves));
       expect(text).toContain('Wave 1');
-      expect(text).toContain('Wave 20');
-    });
-
-    it('packs more than 2 small waves onto one content page now that the hard cap is removed', async () => {
-      const threeTinyWaves: TeamWaveSchedule = {
-        ...schedule,
-        waves: [
-          mkWave('Wave 7 - JD', '14:30', 1),
-          mkWave('Wave 8 - JD', '15:00', 1),
-          mkWave('Wave 9 - JD', '15:50', 1),
-        ],
-      };
-      const buffer = await service.generateSchedulePdf(threeTinyWaves);
-      // 1 summary page + 1 content page holding all three tiny waves.
-      expect(await getPdfPageCount(buffer)).toBe(2);
+      expect(text).toContain('Wave 30');
     });
 
     it('generateSchedulePdf and the generatePdf alias produce the same page count', async () => {

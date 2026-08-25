@@ -82,6 +82,29 @@ describe('PdfExportService.generatePocketPdf', () => {
     expect(text).toContain('START 3:50 PM');
   });
 
+  it('shows each category\'s lap count in the header near the times', async () => {
+    const buffer = await service.generatePocketPdf(schedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('1 LAP');
+  });
+
+  it('pluralizes the lap count and falls back to an em-dash when laps is unknown', async () => {
+    const lapWave = {
+      waveName: 'Wave 1',
+      categories: [
+        { categoryName: 'Advanced Boys', stageTime: '14:15', startTime: '14:30', laps: 3,
+          athletes: [mkAthlete('Zoe', 'Young', '1')] },
+        { categoryName: 'Beginner Boys', stageTime: '14:45', startTime: '15:00', laps: null,
+          athletes: [mkAthlete('Amy', 'Ames', '2')] },
+      ],
+    };
+    const lapSchedule: TeamWaveSchedule = { ...schedule, waves: [lapWave] };
+    const buffer = await service.generatePocketPdf(lapSchedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('3 LAPS');
+    expect(text).toContain('—');
+  });
+
   it('includes each athlete\'s call-up (position) number', async () => {
     const positionWave = {
       waveName: 'Wave 1',

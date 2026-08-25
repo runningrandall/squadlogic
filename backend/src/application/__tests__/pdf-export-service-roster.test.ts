@@ -279,6 +279,39 @@ describe('PdfExportService.generateRosterPdf', () => {
     expect(text).toContain('START 2:30 PM');
   });
 
+  it('shows the category\'s lap count in the header near the times', async () => {
+    const buffer = await service.generateRosterPdf(smallSchedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('1 LAP');
+  });
+
+  it('pluralizes the lap count and falls back to an em-dash when laps is unknown', async () => {
+    const multiLapSchedule: TeamWaveSchedule = {
+      ...smallSchedule,
+      waves: [
+        {
+          waveName: 'Wave 7 - JD',
+          categories: [
+            {
+              categoryName: 'Advanced Boys',
+              stageTime: '14:15', startTime: '14:30', laps: 3,
+              athletes: [mkAthlete('Alice', 'Adams', '1')],
+            },
+            {
+              categoryName: 'Beginner Boys',
+              stageTime: '14:45', startTime: '15:00', laps: null,
+              athletes: [mkAthlete('Bob', 'Baker', '2')],
+            },
+          ],
+        },
+      ],
+    };
+    const buffer = await service.generateRosterPdf(multiLapSchedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('3 LAPS');
+    expect(text).toContain('—');
+  });
+
   it('never truncates an unusually long name, even at the max column count', async () => {
     // Many small categories (rather than one huge one) forces MAX_COLS=4 narrow columns
     // while keeping every category's own block small enough to actually render in full.
