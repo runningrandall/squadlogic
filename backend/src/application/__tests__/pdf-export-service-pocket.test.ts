@@ -12,8 +12,8 @@ const CATEGORY_PALETTE = [
 
 const service = new PdfExportService();
 
-function mkAthlete(firstName: string, lastName: string, bibNumber: string): ScheduleAthlete {
-  return { firstName, lastName, bibNumber, callUpNumber: '1', calledUp: false };
+function mkAthlete(firstName: string, lastName: string, bibNumber: string, callUpNumber = '1'): ScheduleAthlete {
+  return { firstName, lastName, bibNumber, callUpNumber, calledUp: false };
 }
 
 const schedule: TeamWaveSchedule = {
@@ -71,13 +71,30 @@ describe('PdfExportService.generatePocketPdf', () => {
     expect(text).toContain('Wave 9 - JD');
   });
 
-  it('shows each category with its start time instead of a per-row wave column', async () => {
+  it('shows each category with its labeled stage and start times instead of a per-row wave column', async () => {
     const buffer = await service.generatePocketPdf(schedule);
     const text = await getPdfText(buffer);
     expect(text).toContain('Advanced Boys');
-    expect(text).toContain('2:30 PM');
+    expect(text).toContain('STAGE 2:15 PM');
+    expect(text).toContain('START 2:30 PM');
     expect(text).toContain('Beginner 7th Grade Boys');
-    expect(text).toContain('3:50 PM');
+    expect(text).toContain('STAGE 3:35 PM');
+    expect(text).toContain('START 3:50 PM');
+  });
+
+  it('includes each athlete\'s call-up (position) number', async () => {
+    const positionWave = {
+      waveName: 'Wave 1',
+      categories: [
+        { categoryName: 'Advanced Boys', stageTime: '14:15', startTime: '14:30', laps: 1,
+          athletes: [mkAthlete('Zoe', 'Young', '1', '7'), mkAthlete('Amy', 'Ames', '2', '12')] },
+      ],
+    };
+    const positionSchedule: TeamWaveSchedule = { ...schedule, waves: [positionWave] };
+    const buffer = await service.generatePocketPdf(positionSchedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('7');
+    expect(text).toContain('12');
   });
 
   it('prints names as "First Last" instead of "Last, First"', async () => {
@@ -161,6 +178,21 @@ describe('PdfExportService.generatePocketPdf', () => {
     const colors = await getFillColorSequence(buffer, 1);
     const paletteHits = colors.filter((c) => CATEGORY_PALETTE.includes(c.toLowerCase()));
     expect(new Set(paletteHits).size).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows an em-dash for an athlete with no call-up number', async () => {
+    const noPositionWave = {
+      waveName: 'Wave 1',
+      categories: [
+        { categoryName: 'Advanced Boys', stageTime: '14:15', startTime: '14:30', laps: 1,
+          athletes: [{ firstName: 'Zoe', lastName: 'Young', bibNumber: '1', callUpNumber: null, calledUp: false }] },
+      ],
+    };
+    const noPositionSchedule: TeamWaveSchedule = { ...schedule, waves: [noPositionWave] };
+    const buffer = await service.generatePocketPdf(noPositionSchedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('Zoe Young');
+    expect(text).toContain('—');
   });
 
   it('filename uses the pocket variant suffix', () => {

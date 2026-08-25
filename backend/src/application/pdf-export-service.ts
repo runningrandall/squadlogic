@@ -78,10 +78,12 @@ interface RosterCategoryBlock {
 interface PocketAthlete {
   name: string; // "First Last"
   bibNumber: string;
+  callUpNumber: string;
 }
 
 interface PocketCategoryGroup {
   categoryName: string;
+  stageTime: string;
   startTime: string;
   colorIndex: number;
   athletes: PocketAthlete[]; // pre-sorted alphabetically by first name
@@ -846,11 +848,16 @@ export class PdfExportService {
         .sort((a, b) => a.startTime.localeCompare(b.startTime))
         .map((cat) => ({
           categoryName: cat.categoryName,
+          stageTime: cat.stageTime,
           startTime: cat.startTime,
           colorIndex: pocketColorIndex++,
           athletes: [...cat.athletes]
             .sort((x, y) => x.firstName.localeCompare(y.firstName) || x.lastName.localeCompare(y.lastName))
-            .map((a) => ({ name: `${a.firstName} ${a.lastName}`, bibNumber: a.bibNumber })),
+            .map((a) => ({
+              name: `${a.firstName} ${a.lastName}`,
+              bibNumber: a.bibNumber,
+              callUpNumber: a.callUpNumber ?? '—',
+            })),
         })),
     }));
   }
@@ -880,7 +887,7 @@ export class PdfExportService {
   // One wave per panel: a full-width title bar naming the wave, then up to
   // POCKET_COLS side-by-side category columns (round-robin if the wave has more
   // categories than columns). Each category gets its own mini-header showing the
-  // category name and its start time — no per-row wave/category column needed.
+  // category name and its stage/start times — no per-row wave/category column needed.
   private renderPocketPanel(
     doc: PDFKit.PDFDocument,
     wave: PocketWaveGroup,
@@ -907,7 +914,7 @@ export class PdfExportService {
     });
   }
 
-  // Single category's mini-header (name + start time) and athlete-name rows, rendered at an
+  // Single category's mini-header (name + stage/start times) and athlete rows, rendered at an
   // absolute position — returns the y it ended at, mirroring renderCategoryBlock's pattern so
   // columns can stack multiple categories. The header gets a solid colored band (cycling per
   // category, same palette used elsewhere) so adjacent categories in a panel read as visually
@@ -933,21 +940,27 @@ export class PdfExportService {
     doc.fillColor('#222222').fontSize(NAME_FONT).font('Helvetica-Bold');
     this.oneLine(doc, cat.categoryName, cx + 3, y + topPad, colW - 6);
     doc.fillColor('#333333').fontSize(TIME_FONT).font('Helvetica');
-    this.oneLine(doc, formatTime12Hour(cat.startTime), cx + 3, y + topPad + nameLineH, colW - 6);
+    this.oneLine(
+      doc,
+      `STAGE ${formatTime12Hour(cat.stageTime)}   •   START ${formatTime12Hour(cat.startTime)}`,
+      cx + 3, y + topPad + nameLineH, colW - 6,
+    );
     y += POCKET_CAT_HDR_H;
 
     // Striping tints the category's own color instead of a flat gray — more visibly distinct
     // row-to-row while staying light enough to read against, and ties back to the header color.
+    const posW = 20;
     const bibW = 28;
-    const nameW = colW - bibW;
+    const nameW = colW - posW - bibW;
     for (let r = 0; r < cat.athletes.length; r++) {
       const athlete = cat.athletes[r];
       const stripe = r % 2 === 1;
       doc.rect(cx, y, colW, POCKET_ATHLETE_ROW_H).fill(tint(catColor, stripe ? 0.3 : 0.75));
       doc.fillColor('#000000').font('Helvetica').fontSize(8.5);
       const ty = y + (POCKET_ATHLETE_ROW_H - 8.5) / 2;
-      this.oneLine(doc, athlete.name, cx + 2, ty, nameW - 2);
-      this.oneLine(doc, athlete.bibNumber, cx + nameW, ty, bibW, 'right');
+      this.oneLine(doc, athlete.callUpNumber, cx + 2, ty, posW - 2);
+      this.oneLine(doc, athlete.name, cx + posW, ty, nameW - 2);
+      this.oneLine(doc, athlete.bibNumber, cx + posW + nameW, ty, bibW, 'right');
       y += POCKET_ATHLETE_ROW_H;
     }
 
