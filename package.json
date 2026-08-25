@@ -42,5 +42,10 @@
   "packageManager": "pnpm@9.15.4",
   "dependencies": {
     "@agent-ix/quire": "^0.0.9"
+  },
+  "pnpm": {
+    "overrides": {
+      "balanced-match": "^1.0.2"
+    }
   }
 }
