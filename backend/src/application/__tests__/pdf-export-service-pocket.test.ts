@@ -97,6 +97,35 @@ describe('PdfExportService.generatePocketPdf', () => {
     expect(text).toContain('12');
   });
 
+  it('labels the athlete columns with a NAME / CALLUP # / PLATE # header row', async () => {
+    const buffer = await service.generatePocketPdf(schedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('NAME');
+    expect(text).toContain('CALLUP #');
+    expect(text).toContain('PLATE #');
+  });
+
+  it('orders athlete row columns as name, then callup number, then plate number', async () => {
+    const orderedWave = {
+      waveName: 'Wave 1',
+      categories: [
+        { categoryName: 'Advanced Boys', stageTime: '14:15', startTime: '14:30', laps: 1,
+          athletes: [mkAthlete('Zoe', 'Young', '55555', '77777')] },
+      ],
+    };
+    const orderedSchedule: TeamWaveSchedule = { ...schedule, waves: [orderedWave] };
+    const buffer = await service.generatePocketPdf(orderedSchedule);
+    const text = await getPdfText(buffer);
+    const nameIdx = text.indexOf('Zoe Young');
+    const callUpIdx = text.indexOf('77777');
+    const plateIdx = text.indexOf('55555');
+    expect(nameIdx).toBeGreaterThan(-1);
+    expect(callUpIdx).toBeGreaterThan(-1);
+    expect(plateIdx).toBeGreaterThan(-1);
+    expect(nameIdx).toBeLessThan(callUpIdx);
+    expect(callUpIdx).toBeLessThan(plateIdx);
+  });
+
   it('prints names as "First Last" instead of "Last, First"', async () => {
     const buffer = await service.generatePocketPdf(schedule);
     const text = await getPdfText(buffer);

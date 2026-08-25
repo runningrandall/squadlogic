@@ -108,6 +108,7 @@ const POCKET_COLS = 2;
 const POCKET_COL_GAP = 10;
 const POCKET_CAT_HDR_H = 20;
 const POCKET_CAT_GAP = 6;
+const POCKET_COLHDR_H = 10;
 const POCKET_ATHLETE_ROW_H = 12;
 
 export class PdfExportService {
@@ -947,20 +948,32 @@ export class PdfExportService {
     );
     y += POCKET_CAT_HDR_H;
 
-    // Striping tints the category's own color instead of a flat gray — more visibly distinct
-    // row-to-row while staying light enough to read against, and ties back to the header color.
-    const posW = 20;
+    // Column order: Name | Callup # | Plate # (bib).
+    const posW = 32;
     const bibW = 28;
     const nameW = colW - posW - bibW;
+
+    // Column header row — small, on its own faint band so it reads as labels rather than data.
+    const HDR_FONT = 6;
+    doc.rect(cx, y, colW, POCKET_COLHDR_H).fill('#E0E0E0');
+    doc.fillColor('#555555').font('Helvetica-Bold').fontSize(HDR_FONT);
+    const hdrTy = y + (POCKET_COLHDR_H - HDR_FONT) / 2;
+    this.oneLine(doc, 'NAME', cx + 2, hdrTy, nameW - 2, 'left');
+    this.oneLine(doc, 'CALLUP #', cx + nameW, hdrTy, posW, 'center');
+    this.oneLine(doc, 'PLATE #', cx + nameW + posW, hdrTy, bibW - 2, 'right');
+    y += POCKET_COLHDR_H;
+
+    // Striping tints the category's own color instead of a flat gray — more visibly distinct
+    // row-to-row while staying light enough to read against, and ties back to the header color.
     for (let r = 0; r < cat.athletes.length; r++) {
       const athlete = cat.athletes[r];
       const stripe = r % 2 === 1;
       doc.rect(cx, y, colW, POCKET_ATHLETE_ROW_H).fill(tint(catColor, stripe ? 0.3 : 0.75));
       doc.fillColor('#000000').font('Helvetica').fontSize(8.5);
       const ty = y + (POCKET_ATHLETE_ROW_H - 8.5) / 2;
-      this.oneLine(doc, athlete.callUpNumber, cx + 2, ty, posW - 2);
-      this.oneLine(doc, athlete.name, cx + posW, ty, nameW - 2);
-      this.oneLine(doc, athlete.bibNumber, cx + posW + nameW, ty, bibW, 'right');
+      this.oneLine(doc, athlete.name, cx + 2, ty, nameW - 2);
+      this.oneLine(doc, athlete.callUpNumber, cx + nameW, ty, posW, 'center');
+      this.oneLine(doc, athlete.bibNumber, cx + nameW + posW, ty, bibW - 2, 'right');
       y += POCKET_ATHLETE_ROW_H;
     }
 
