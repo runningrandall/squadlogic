@@ -241,6 +241,20 @@ describe('PdfExportService', () => {
     expect(text).not.toContain('Adams, Dave');
   });
 
+  it('shows the category header\'s stage and race-start times on separate labeled lines', async () => {
+    const buffer = await service.generatePdf(schedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('STAGE: 9:50 AM');
+    expect(text).toContain('RACE START: 10:10 AM');
+    expect(text).toContain('4 LAPS');
+  });
+
+  it('renders the title as a single line', async () => {
+    const buffer = await service.generatePdf(schedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('RIDER PREP & RACE TIMES');
+  });
+
   it('labels the summary\'s last column ATHLETE COUNT', async () => {
     const buffer = await service.generatePdf(schedule);
     const text = await getPdfText(buffer);

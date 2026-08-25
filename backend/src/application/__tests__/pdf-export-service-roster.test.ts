@@ -268,6 +268,51 @@ describe('PdfExportService.generateRosterPdf', () => {
     expect(text).toContain('Category 19');
   });
 
+  it('shows MTG/STAGE/START once in the category header instead of once per athlete row', async () => {
+    const buffer = await service.generateRosterPdf(smallSchedule);
+    const text = await getPdfText(buffer);
+    // smallSchedule has 3 athletes in one category — if times were still per-row columns,
+    // "MTG" would appear 3 times; grouped into the category header it appears exactly once.
+    const mtgCount = (text.match(/MTG/g) ?? []).length;
+    expect(mtgCount).toBe(1);
+    expect(text).toContain('STAGE 2:15 PM');
+    expect(text).toContain('START 2:30 PM');
+  });
+
+  it('never truncates an unusually long name, even at the max column count', async () => {
+    // Many small categories (rather than one huge one) forces MAX_COLS=4 narrow columns
+    // while keeping every category's own block small enough to actually render in full.
+    const longNameSchedule: TeamWaveSchedule = {
+      teamName: 'Wasatch',
+      eventName: 'UTAH HS MTB 2026 - Region 5',
+      eventDate: '2026-08-22',
+      totalAthletes: 61,
+      waves: [
+        {
+          waveName: 'Wave 1',
+          categories: [
+            {
+              categoryName: 'Category 0',
+              stageTime: '08:00', startTime: '08:00', laps: 1,
+              athletes: [mkAthlete('Maximilian-Alexander-Bartholomew', 'Featherstonehaugh-Worthington-Winchester', '9999')],
+            },
+            ...Array.from({ length: 20 }, (_, c) => ({
+              categoryName: `Category ${c + 1}`,
+              stageTime: '08:00', startTime: '08:00', laps: 1,
+              athletes: Array.from({ length: 3 }, (_, i) => mkAthlete(`F${c}_${i}`, `L${c}_${i}`, String(c * 10 + i))),
+            })),
+          ],
+        },
+      ],
+    };
+    const buffer = await service.generateRosterPdf(longNameSchedule);
+    const text = await getPdfText(buffer);
+    expect(text).toContain('Maximilian-Alexander-Bartholomew Featherstonehaugh-Worthington-Winchester');
+    // pdfkit's ellipsis truncation would insert this character — its absence confirms the
+    // name rendered in full (at a shrunk font) rather than being cut short.
+    expect(text).not.toContain('…');
+  });
+
   it('filename uses the roster variant suffix', () => {
     const filename = service.generateFilename('Wasatch', '2026-08-22', 'roster');
     expect(filename).toBe('Wasatch_2026-08-22_roster.pdf');

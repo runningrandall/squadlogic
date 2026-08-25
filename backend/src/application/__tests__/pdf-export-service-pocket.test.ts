@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { PdfExportService } from '../pdf-export-service.js';
-import { getPdfPageCount, getPdfText } from './pdf-test-utils.js';
+import { getPdfPageCount, getPdfText, getFillColorSequence } from './pdf-test-utils.js';
 import type { TeamWaveSchedule, ScheduleAthlete } from '../../domain/race-event.js';
+
+// Mirrors the module-private ROW_COLORS palette in pdf-export-service.ts — category header
+// bands cycle through these, so seeing 2+ of them confirms two different panels' single
+// category each got a distinct color instead of both defaulting to the first palette entry.
+const CATEGORY_PALETTE = [
+  '#b3e5fc', '#c8e6c9', '#fff9c4', '#ffe0b2', '#f8bbd0', '#e1bee7', '#b2ebf2', '#ffccbc',
+];
 
 const service = new PdfExportService();
 
@@ -144,6 +151,16 @@ describe('PdfExportService.generatePocketPdf', () => {
     const buffer = await service.generatePocketPdf(emptySchedule);
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
     expect(await getPdfPageCount(buffer)).toBe(2);
+  });
+
+  it('gives two different waves\' single category a distinct header color, not the same one', async () => {
+    // Regression: color index used to reset to 0 for every wave (first category in its own
+    // wave always got index 0), so two waves with exactly one category each both rendered
+    // the same color instead of visibly distinct ones.
+    const buffer = await service.generatePocketPdf(schedule);
+    const colors = await getFillColorSequence(buffer, 1);
+    const paletteHits = colors.filter((c) => CATEGORY_PALETTE.includes(c.toLowerCase()));
+    expect(new Set(paletteHits).size).toBeGreaterThanOrEqual(2);
   });
 
   it('filename uses the pocket variant suffix', () => {

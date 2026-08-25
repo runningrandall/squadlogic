@@ -46,6 +46,27 @@ export async function getPdfPageCount(buffer: Buffer): Promise<number> {
   return doc.numPages;
 }
 
+// Returns every distinct fill color (as "#rrggbb" hex, in first-use order) that pdfkit's
+// setFillRGBColor operator sets while drawing a page. pdfjs's operator list already stores
+// this operator's argument as the literal CSS hex string it hands to canvas's fillStyle
+// (op code 59 — pdfjs-dist has no stable public export for OPS.setFillRGBColor, so this is a
+// pinned magic number), which is exactly what's needed to assert two rects were filled with
+// visually distinct colors without doing actual pixel rendering.
+const OP_SET_FILL_RGB_COLOR = 59;
+export async function getFillColorSequence(buffer: Buffer, pageNum = 1): Promise<string[]> {
+  const doc = await loadPdf(buffer);
+  const page = await doc.getPage(pageNum);
+  const opList = await page.getOperatorList();
+  const colors: string[] = [];
+  for (let i = 0; i < opList.fnArray.length; i++) {
+    if (opList.fnArray[i] === OP_SET_FILL_RGB_COLOR) {
+      const hex = (opList.argsArray[i] as unknown[])[0];
+      if (typeof hex === 'string' && colors[colors.length - 1] !== hex) colors.push(hex);
+    }
+  }
+  return colors;
+}
+
 // PDFKit compresses content streams by default, so drawn text is not searchable via a
 // naive latin1 dump of the raw bytes (only uncompressed object dictionaries are). This
 // properly decodes and extracts the actual rendered text of every page, for real
