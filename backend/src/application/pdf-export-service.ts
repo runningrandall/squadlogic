@@ -56,6 +56,12 @@ interface PageMetrics {
 
 const TABLOID_LANDSCAPE: PageMetrics = { L: 36, PW: 1224, PH: 792, CW: 1152, HEADER_H: 52 };
 
+// The summary page is drawn on a "rotated" logical canvas — see generateSchedulePdf — so its
+// table gets the full 1224pt long edge as its vertical (row) axis instead of the 792pt short
+// edge, letting far more waves fit before a second page is needed. PW/PH here describe that
+// logical canvas (tall, not the physical sheet, which stays an ordinary Tabloid landscape page).
+const SUMMARY_PM: PageMetrics = { L: 36, PW: 792, PH: 1224, CW: 720, HEADER_H: 52 };
+
 interface RosterRow {
   name: string;
   firstName: string;
@@ -150,9 +156,13 @@ export class PdfExportService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // Page 1: summary
-      this.renderPageHeader(pm, doc, sorted, brand, logoBuffer, eventLocation);
-      this.renderSummary(pm, doc, sorted, brand, logoBuffer, eventLocation);
+      // Page 1: summary, rotated 90° into the physical page (see SUMMARY_PM above) — the
+      // printed sheet shows the table sideways; turn the printed page so its long edge is
+      // on top to read it normally. Detail pages below are unaffected: each doc.addPage()
+      // starts a fresh, unrotated content matrix.
+      doc.transform(0, 1, -1, 0, TABLOID_LANDSCAPE.PW, 0);
+      this.renderPageHeader(SUMMARY_PM, doc, sorted, brand, logoBuffer, eventLocation);
+      this.renderSummary(SUMMARY_PM, doc, sorted, brand, logoBuffer, eventLocation);
 
       // Subsequent pages: waves packed as many-per-page as measured height allows
       const avail = pm.PH - pm.HEADER_H - 20;
@@ -333,14 +343,20 @@ export class PdfExportService {
     logoBuffer: Buffer | null,
     eventLocation?: string,
   ): void {
-    // Large title — one line (plenty of width on a Tabloid landscape page)
+    // Large title — one line (plenty of width on a Tabloid landscape page). Explicit height
+    // avoids pdfkit's own auto-pagination check, which compares the raw y position against
+    // the *physical* page height and would otherwise add a spurious page — harmless here
+    // since the title sits near the top, but every text call below follows the same rule
+    // since this page's logical canvas is taller than the physical sheet (see SUMMARY_PM).
     doc.fillColor('#000000').fontSize(28).font('Helvetica-Bold');
-    doc.text('RIDER PREP & RACE TIMES', pm.L, doc.y, { width: pm.CW, align: 'center', lineBreak: false });
+    doc.text('RIDER PREP & RACE TIMES', pm.L, doc.y, { width: pm.CW, height: 34, align: 'center', lineBreak: false });
     doc.y += 40;
 
     // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athlete Count.
     // Fixed columns take up their share; Category takes whatever content width remains.
-    const fixedCols = [80, 85, 85, 80, 95, 65];
+    // Wave gets enough room for names like "Wave 12 - HS" at the larger data font below;
+    // time columns are sized for "10:20 AM" at that same size.
+    const fixedCols = [140, 88, 88, 88, 88, 70];
     const categoryColW = pm.CW - fixedCols.reduce((s, w) => s + w, 0);
     const cols = [fixedCols[0], categoryColW, ...fixedCols.slice(1)];
     const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', 'ATHLETE COUNT'];
@@ -351,8 +367,8 @@ export class PdfExportService {
       TIME_COL_COLORS.athletes,
     ];
     const tableW = cols.reduce((s, w) => s + w, 0);
-    const HDR_H = 34;
-    const HDR_FONT_SIZE = 12;
+    const HDR_H = 36;
+    const HDR_FONT_SIZE = 13;
     const footerY = pm.PH - 30;
 
     const drawColumnHeaderRow = (): void => {
@@ -386,11 +402,11 @@ export class PdfExportService {
     // overflowing past the page boundary.
     // One consistent font size across the wave/category/time columns — previously the wave
     // column used a visibly smaller size than its neighbors for no functional reason.
-    const WAVE_FONT_SIZE = 14;
-    const CAT_FONT_SIZE = 14;
-    const TIME_FONT_SIZE = 14;
+    const WAVE_FONT_SIZE = 16;
+    const CAT_FONT_SIZE = 16;
+    const TIME_FONT_SIZE = 16;
     const ROW_V_PAD = 20;
-    const ROW_MIN_H = 46;
+    const ROW_MIN_H = 50;
 
     const contentRowH = (wave: WaveGroup): number => {
       const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
@@ -423,6 +439,7 @@ export class PdfExportService {
 
       if (doc.y + ROW_H > footerY) {
         doc.addPage();
+        doc.transform(0, 1, -1, 0, TABLOID_LANDSCAPE.PW, 0);
         this.renderPageHeader(pm, doc, schedule, brand, logoBuffer, eventLocation);
         drawColumnHeaderRow();
       }
@@ -456,7 +473,9 @@ export class PdfExportService {
         const ty = rowY + (allowWrap ? (ROW_H - categoryH) / 2 : (ROW_H - fontSize) / 2);
         if (allowWrap) {
           // allowWrap only applies to the category column (i===1), which centered (i>=2) never is.
-          doc.text(rowVals[i], x + 4, ty, { width: cols[i] - 8, align: 'left' });
+          // Explicit height (already measured as categoryH above) avoids pdfkit's auto-pagination
+          // check — see the note on the title above.
+          doc.text(rowVals[i], x + 4, ty, { width: cols[i] - 8, height: categoryH, align: 'left' });
         } else {
           this.oneLine(doc, rowVals[i], x + 4, ty, cols[i] - 8, centered ? 'center' : 'left');
         }
@@ -471,11 +490,11 @@ export class PdfExportService {
       doc.y = rowY + ROW_H;
     }
 
-    // Footer
+    // Footer — bounded width/height for the same auto-pagination reason noted on the title.
     doc.fontSize(7).fillColor('#999999').font('Helvetica');
     doc.text(
       `Generated by Switchback  •  ${schedule.totalAthletes} athletes  •  ${schedule.waves.length} waves`,
-      pm.L, pm.PH - 26, { lineBreak: false },
+      pm.L, pm.PH - 26, { width: pm.CW, height: 10, lineBreak: false },
     );
   }
 
