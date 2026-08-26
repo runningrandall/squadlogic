@@ -341,13 +341,17 @@ export class PdfExportService {
     doc.y += 40;
 
     // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athlete Count.
-    // Fixed columns take up their share; Category takes whatever content width remains.
-    // Wave gets enough room for names like "Wave 12 - HS" at the larger data font below;
-    // time columns are sized for "10:20 AM" at that same size.
-    const fixedCols = [140, 88, 88, 88, 88, 70];
+    // Fixed columns take up their share; Category takes whatever content width remains. The
+    // wave column only ever holds a short sequence number ("1", "2", ...) instead of the full
+    // wave name (which already repeats on the detail page), so it needs little width — that
+    // width is instead given to RACE START, whose "RACE START" header label is the widest of
+    // the bunch and was clipping with an ellipsis at the old column width.
+    const WAVE_COL_PAD = 16;
+    const STRIPE_OPACITY = 0.22;
+    const fixedCols = [60, 92, 84, 82, 110, 78];
     const categoryColW = pm.CW - fixedCols.reduce((s, w) => s + w, 0);
     const cols = [fixedCols[0], categoryColW, ...fixedCols.slice(1)];
-    const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', 'ATHLETE COUNT'];
+    const hdrs = ['#', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', 'ATHLETE COUNT'];
     const hdrColors = [
       '#000000', '#000000',
       TIME_COL_COLORS.waveMtg, TIME_COL_COLORS.warmUp,
@@ -355,28 +359,38 @@ export class PdfExportService {
       TIME_COL_COLORS.athletes,
     ];
     const tableW = cols.reduce((s, w) => s + w, 0);
+    const colX: number[] = [];
+    {
+      let hx = pm.L;
+      for (const w of cols) {
+        colX.push(hx);
+        hx += w;
+      }
+    }
     const HDR_H = 36;
-    const HDR_FONT_SIZE = 13;
+    const HDR_FONT_SIZE = 15;
     const footerY = pm.PH - 30;
 
     const drawColumnHeaderRow = (): void => {
       const thY = doc.y;
-      let hx = pm.L;
       for (let i = 0; i < hdrs.length; i++) {
-        doc.rect(hx, thY, cols[i], HDR_H).fill(hdrColors[i]);
+        doc.rect(colX[i], thY, cols[i], HDR_H).fill(hdrColors[i]);
         const txtColor = i < 2 ? '#FFFFFF' : '#000000';
         const centered = i >= 2;
+        const leftPad = i === 0 ? WAVE_COL_PAD : 4;
         doc.fillColor(txtColor).font('Helvetica-Bold');
         if (hdrs[i] === 'ATHLETE COUNT') {
           // Two lines so the longer label still fits a column sized like its neighbors.
           doc.fontSize(HDR_FONT_SIZE - 1);
-          this.oneLine(doc, 'ATHLETE', hx + 4, thY + 7, cols[i] - 8, 'center');
-          this.oneLine(doc, 'COUNT', hx + 4, thY + 19, cols[i] - 8, 'center');
+          this.oneLine(doc, 'ATHLETE', colX[i] + 4, thY + 6, cols[i] - 8, 'center');
+          this.oneLine(doc, 'COUNT', colX[i] + 4, thY + 19, cols[i] - 8, 'center');
         } else {
           doc.fontSize(HDR_FONT_SIZE);
-          this.oneLine(doc, hdrs[i], hx + 4, thY + (HDR_H - HDR_FONT_SIZE) / 2, cols[i] - 8, centered ? 'center' : 'left');
+          this.oneLine(
+            doc, hdrs[i], colX[i] + leftPad, thY + (HDR_H - HDR_FONT_SIZE) / 2,
+            cols[i] - leftPad - 4, centered ? 'center' : 'left',
+          );
         }
-        hx += cols[i];
       }
       doc.y = thY + HDR_H;
     };
@@ -434,13 +448,23 @@ export class PdfExportService {
 
       const rowY = doc.y;
       const rowColor = ROW_COLORS[colorIdx % ROW_COLORS.length];
+      const waveNumber = colorIdx + 1;
       colorIdx++;
 
       doc.rect(pm.L, rowY, tableW, ROW_H).fill(rowColor);
+
+      // Vertical stripe accents: each timing column (everything right of CATEGORY) gets a
+      // translucent tint of its own header color layered on top of the row's base color, so
+      // the per-wave row striping still reads through while each column keeps a visible hint
+      // of the accent color that identifies it in the header.
+      for (let i = 2; i < cols.length; i++) {
+        doc.rect(colX[i], rowY, cols[i], ROW_H).fillColor(hdrColors[i], STRIPE_OPACITY).fill();
+      }
+      doc.fillOpacity(1);
       doc.fillColor('#000000');
 
       const rowVals = [
-        wave.waveName,
+        String(waveNumber),
         categoryList,
         logistics?.waveMeetingTime ? formatTime12Hour(logistics.waveMeetingTime) : '—',
         logistics?.warmupStart ? formatTime12Hour(logistics.warmupStart) : '—',
@@ -449,7 +473,6 @@ export class PdfExportService {
         firstCat?.startTime ? formatTime12Hour(firstCat.startTime) : '—',
         String(athleteCount),
       ];
-      let x = pm.L;
       for (let i = 0; i < rowVals.length; i++) {
         const bold = i < 2;
         const centered = i >= 2;
@@ -457,17 +480,17 @@ export class PdfExportService {
         // every other column is forced to a single truncated line.
         const allowWrap = i === 1;
         const fontSize = allowWrap ? CAT_FONT_SIZE : i === 0 ? WAVE_FONT_SIZE : TIME_FONT_SIZE;
+        const leftPad = i === 0 ? WAVE_COL_PAD : 4;
         doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
         const ty = rowY + (allowWrap ? (ROW_H - categoryH) / 2 : (ROW_H - fontSize) / 2);
         if (allowWrap) {
           // allowWrap only applies to the category column (i===1), which centered (i>=2) never is.
           // Explicit height (already measured as categoryH above) avoids pdfkit's auto-pagination
           // check — see the note on the title above.
-          doc.text(rowVals[i], x + 4, ty, { width: cols[i] - 8, height: categoryH, align: 'left' });
+          doc.text(rowVals[i], colX[i] + 4, ty, { width: cols[i] - 8, height: categoryH, align: 'left' });
         } else {
-          this.oneLine(doc, rowVals[i], x + 4, ty, cols[i] - 8, centered ? 'center' : 'left');
+          this.oneLine(doc, rowVals[i], colX[i] + leftPad, ty, cols[i] - leftPad - 4, centered ? 'center' : 'left');
         }
-        x += cols[i];
       }
 
       // Separator line between the identifying columns (Wave/Category) and the schedule-data

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { PdfExportService } from '../pdf-export-service.js';
-import { getPdfPageCount, getPdfText, getFillColorSequence } from './pdf-test-utils.js';
+import { getPdfPageCount, getPdfText, getPdfPageText, getFillColorSequence } from './pdf-test-utils.js';
 import type { TeamWaveSchedule } from '../../domain/race-event.js';
 
 // Mirrors the module-private ROW_COLORS palette in pdf-export-service.ts.
@@ -265,6 +265,53 @@ describe('PdfExportService', () => {
     const text = await getPdfText(buffer);
     expect(text).toContain('ATHLETE');
     expect(text).toContain('COUNT');
+  });
+
+  it('numbers summary rows sequentially instead of repeating the wave name in every row', async () => {
+    const threeWaveSchedule: TeamWaveSchedule = {
+      ...schedule,
+      waves: [
+        { waveName: 'Wave 3 - HS', categories: schedule.waves[0].categories },
+        { waveName: 'Wave 7 - JD', categories: schedule.waves[0].categories },
+        { waveName: 'Wave 9 - JD', categories: schedule.waves[0].categories },
+      ],
+    };
+    const buffer = await service.generatePdf(threeWaveSchedule);
+    const summaryText = await getPdfPageText(buffer, 1);
+    expect(summaryText).toContain('1');
+    expect(summaryText).toContain('2');
+    expect(summaryText).toContain('3');
+    // The full wave name is no longer repeated per row on the summary page — it still
+    // appears once on the detail page, but getPdfPageText scopes this check to page 1 only.
+    expect(summaryText).not.toContain('Wave 3 - HS');
+    expect(summaryText).not.toContain('Wave 7 - JD');
+  });
+
+  it('does not truncate the RACE START header with an ellipsis', async () => {
+    const buffer = await service.generatePdf(schedule);
+    const summaryText = await getPdfPageText(buffer, 1);
+    expect(summaryText).toContain('RACE START');
+    expect(summaryText).not.toContain('…');
+  });
+
+  it('tints each timing column with a translucent version of its own header color', async () => {
+    // Mirrors the module-private TIME_COL_COLORS palette — the WAVE MTG header band uses this
+    // hex once; if the per-row vertical stripe is actually being drawn, the same hex is set as
+    // the fill color again for every data row (a translucent version via fillOpacity, which
+    // pdfjs's operator list reports as the same underlying color argument).
+    const WAVE_MTG_COLOR = '#b39ddb';
+    const twoWaveSchedule: TeamWaveSchedule = {
+      ...schedule,
+      waves: [
+        { waveName: 'Wave 1', categories: schedule.waves[0].categories },
+        { waveName: 'Wave 2', categories: schedule.waves[0].categories },
+      ],
+    };
+    const buffer = await service.generatePdf(twoWaveSchedule);
+    const colors = await getFillColorSequence(buffer, 1);
+    const hits = colors.filter((c) => c.toLowerCase() === WAVE_MTG_COLOR).length;
+    // 1 header band + 1 per data row (2 waves) = 3 uses of this exact color on the page.
+    expect(hits).toBeGreaterThanOrEqual(3);
   });
 
   it('renders without error when an athlete is called up', async () => {

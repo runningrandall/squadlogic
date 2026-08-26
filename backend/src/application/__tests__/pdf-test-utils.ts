@@ -81,3 +81,13 @@ export async function getPdfText(buffer: Buffer): Promise<string> {
   }
   return pageTexts.join('\n');
 }
+
+// Same as getPdfText but scoped to a single page — needed when a assertion cares about
+// content on one specific page (e.g. the summary page) without also matching the same
+// text if it happens to repeat on another page (e.g. the detail page).
+export async function getPdfPageText(buffer: Buffer, pageNum: number): Promise<string> {
+  const doc = await loadPdf(buffer);
+  const page = await doc.getPage(pageNum);
+  const content = await page.getTextContent();
+  return content.items.map((item) => ('str' in item ? item.str : '')).join(' ');
+}
