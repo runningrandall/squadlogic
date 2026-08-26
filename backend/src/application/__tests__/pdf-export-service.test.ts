@@ -278,6 +278,7 @@ describe('PdfExportService', () => {
     };
     const buffer = await service.generatePdf(threeWaveSchedule);
     const summaryText = await getPdfPageText(buffer, 1);
+    expect(summaryText).toContain('WAVE');
     expect(summaryText).toContain('1');
     expect(summaryText).toContain('2');
     expect(summaryText).toContain('3');
@@ -294,11 +295,10 @@ describe('PdfExportService', () => {
     expect(summaryText).not.toContain('…');
   });
 
-  it('tints each timing column with a translucent version of its own header color', async () => {
+  it('accents each timing column with left/right borders in its own header color', async () => {
     // Mirrors the module-private TIME_COL_COLORS palette — the WAVE MTG header band uses this
-    // hex once; if the per-row vertical stripe is actually being drawn, the same hex is set as
-    // the fill color again for every data row (a translucent version via fillOpacity, which
-    // pdfjs's operator list reports as the same underlying color argument).
+    // hex once; if the per-row column border is actually being drawn, the same hex is set as
+    // the fill color twice more per data row (one border rect on each edge of the column).
     const WAVE_MTG_COLOR = '#b39ddb';
     const twoWaveSchedule: TeamWaveSchedule = {
       ...schedule,
@@ -310,7 +310,8 @@ describe('PdfExportService', () => {
     const buffer = await service.generatePdf(twoWaveSchedule);
     const colors = await getFillColorSequence(buffer, 1);
     const hits = colors.filter((c) => c.toLowerCase() === WAVE_MTG_COLOR).length;
-    // 1 header band + 1 per data row (2 waves) = 3 uses of this exact color on the page.
+    // 1 header band + 1 per data row (2 waves): getFillColorSequence collapses consecutive
+    // same-color fills, so the left/right border pair on one column counts once per row.
     expect(hits).toBeGreaterThanOrEqual(3);
   });
 

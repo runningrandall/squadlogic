@@ -331,14 +331,21 @@ export class PdfExportService {
     logoBuffer: Buffer | null,
     eventLocation?: string,
   ): void {
-    // Large title — one line (plenty of width on a Tabloid landscape page). Explicit height
-    // avoids pdfkit's own auto-pagination check, which compares the raw y position against
-    // the *physical* page height and would otherwise add a spurious page — harmless here
-    // since the title sits near the top, but every text call below follows the same rule
-    // since this page's logical canvas is taller than the physical sheet (see SUMMARY_PM).
+    // Large title — one line (plenty of width on a Tabloid landscape page), vertically
+    // centered in the gap between the page header banner and the table below it rather than
+    // sitting flush against the banner. Explicit height avoids pdfkit's own auto-pagination
+    // check, which compares the raw y position against the *physical* page height and would
+    // otherwise add a spurious page — every text call below follows the same rule since this
+    // page's logical canvas is taller than the physical sheet (see SUMMARY_PM).
+    const TITLE_GAP = 64;
+    const TITLE_H = 34;
+    const titleTop = doc.y;
     doc.fillColor('#000000').fontSize(28).font('Helvetica-Bold');
-    doc.text('RIDER PREP & RACE TIMES', pm.L, doc.y, { width: pm.CW, height: 34, align: 'center', lineBreak: false });
-    doc.y += 40;
+    doc.text(
+      'RIDER PREP & RACE TIMES', pm.L, titleTop + (TITLE_GAP - TITLE_H) / 2,
+      { width: pm.CW, height: TITLE_H, align: 'center', lineBreak: false },
+    );
+    doc.y = titleTop + TITLE_GAP;
 
     // Column layout: Wave | Category | WaveMtg | WarmUp | Stage | RaceStart | Athlete Count.
     // Fixed columns take up their share; Category takes whatever content width remains. The
@@ -347,11 +354,11 @@ export class PdfExportService {
     // width is instead given to RACE START, whose "RACE START" header label is the widest of
     // the bunch and was clipping with an ellipsis at the old column width.
     const WAVE_COL_PAD = 16;
-    const STRIPE_OPACITY = 0.22;
+    const BORDER_W = 3;
     const fixedCols = [60, 92, 84, 82, 110, 78];
     const categoryColW = pm.CW - fixedCols.reduce((s, w) => s + w, 0);
     const cols = [fixedCols[0], categoryColW, ...fixedCols.slice(1)];
-    const hdrs = ['#', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', 'ATHLETE COUNT'];
+    const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', 'ATHLETE COUNT'];
     const hdrColors = [
       '#000000', '#000000',
       TIME_COL_COLORS.waveMtg, TIME_COL_COLORS.warmUp,
@@ -377,7 +384,6 @@ export class PdfExportService {
         doc.rect(colX[i], thY, cols[i], HDR_H).fill(hdrColors[i]);
         const txtColor = i < 2 ? '#FFFFFF' : '#000000';
         const centered = i >= 2;
-        const leftPad = i === 0 ? WAVE_COL_PAD : 4;
         doc.fillColor(txtColor).font('Helvetica-Bold');
         if (hdrs[i] === 'ATHLETE COUNT') {
           // Two lines so the longer label still fits a column sized like its neighbors.
@@ -387,8 +393,8 @@ export class PdfExportService {
         } else {
           doc.fontSize(HDR_FONT_SIZE);
           this.oneLine(
-            doc, hdrs[i], colX[i] + leftPad, thY + (HDR_H - HDR_FONT_SIZE) / 2,
-            cols[i] - leftPad - 4, centered ? 'center' : 'left',
+            doc, hdrs[i], colX[i] + 4, thY + (HDR_H - HDR_FONT_SIZE) / 2,
+            cols[i] - 8, centered ? 'center' : 'left',
           );
         }
       }
@@ -453,14 +459,13 @@ export class PdfExportService {
 
       doc.rect(pm.L, rowY, tableW, ROW_H).fill(rowColor);
 
-      // Vertical stripe accents: each timing column (everything right of CATEGORY) gets a
-      // translucent tint of its own header color layered on top of the row's base color, so
-      // the per-wave row striping still reads through while each column keeps a visible hint
-      // of the accent color that identifies it in the header.
+      // Column accent borders: each timing column (everything right of CATEGORY) gets a solid
+      // bar of its own header color along its left and right edges, so the row's base color
+      // stays clean and legible while each column still visibly ties back to its header.
       for (let i = 2; i < cols.length; i++) {
-        doc.rect(colX[i], rowY, cols[i], ROW_H).fillColor(hdrColors[i], STRIPE_OPACITY).fill();
+        doc.rect(colX[i], rowY, BORDER_W, ROW_H).fill(hdrColors[i]);
+        doc.rect(colX[i] + cols[i] - BORDER_W, rowY, BORDER_W, ROW_H).fill(hdrColors[i]);
       }
-      doc.fillOpacity(1);
       doc.fillColor('#000000');
 
       const rowVals = [
