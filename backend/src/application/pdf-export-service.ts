@@ -355,9 +355,13 @@ export class PdfExportService {
     // the bunch and was clipping with an ellipsis at the old column width.
     const WAVE_COL_PAD = 16;
     const BORDER_W = 3;
+    // A small gap between adjacent timing columns (WAVE MTG/WARM UP/STAGE/RACE START/ATHLETE
+    // COUNT) so their accent-colored borders don't butt directly against their neighbor's —
+    // the intervening sliver just shows the row's own base color through, same as everywhere
+    // else in the row. Reserved out of the category column's share so the table's total width
+    // still adds up to exactly pm.CW regardless of how many timing columns there are.
+    const COL_GAP = 4;
     const fixedCols = [60, 92, 84, 82, 110, 78];
-    const categoryColW = pm.CW - fixedCols.reduce((s, w) => s + w, 0);
-    const cols = [fixedCols[0], categoryColW, ...fixedCols.slice(1)];
     const hdrs = ['WAVE', 'CATEGORY', 'WAVE MTG', 'WARM UP', 'STAGE', 'RACE START', 'ATHLETE COUNT'];
     const hdrColors = [
       '#000000', '#000000',
@@ -365,15 +369,19 @@ export class PdfExportService {
       TIME_COL_COLORS.stage,   TIME_COL_COLORS.race,
       TIME_COL_COLORS.athletes,
     ];
-    const tableW = cols.reduce((s, w) => s + w, 0);
+    const gapCount = fixedCols.length - 2; // one gap between each pair of timing columns
+    const categoryColW = pm.CW - fixedCols.reduce((s, w) => s + w, 0) - gapCount * COL_GAP;
+    const cols = [fixedCols[0], categoryColW, ...fixedCols.slice(1)];
     const colX: number[] = [];
     {
       let hx = pm.L;
-      for (const w of cols) {
+      for (let i = 0; i < cols.length; i++) {
+        if (i >= 3) hx += COL_GAP;
         colX.push(hx);
-        hx += w;
+        hx += cols[i];
       }
     }
+    const tableW = colX[colX.length - 1] + cols[cols.length - 1] - pm.L;
     const HDR_H = 36;
     const HDR_FONT_SIZE = 15;
     const footerY = pm.PH - 30;
@@ -435,7 +443,8 @@ export class PdfExportService {
 
     const sepX = pm.L + cols[0] + cols[1];
     let colorIdx = 0;
-    for (const wave of schedule.waves) {
+    for (let waveIdx = 0; waveIdx < schedule.waves.length; waveIdx++) {
+      const wave = schedule.waves[waveIdx];
       const firstCat = wave.categories[0];
       const logistics = firstCat?.athletes[0]?.logistics;
       const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
@@ -461,10 +470,18 @@ export class PdfExportService {
 
       // Column accent borders: each timing column (everything right of CATEGORY) gets a solid
       // bar of its own header color along its left and right edges, so the row's base color
-      // stays clean and legible while each column still visibly ties back to its header.
+      // stays clean and legible while each column still visibly ties back to its header. The
+      // last row on the page (found by checking whether a next wave exists and would still fit
+      // on this page, not a hardcoded row count) also gets a matching bottom bar so the accent
+      // box actually closes instead of trailing off.
+      const nextWave = schedule.waves[waveIdx + 1];
+      const isLastRowOnPage = !nextWave || (rowY + ROW_H + contentRowH(nextWave) > footerY);
       for (let i = 2; i < cols.length; i++) {
         doc.rect(colX[i], rowY, BORDER_W, ROW_H).fill(hdrColors[i]);
         doc.rect(colX[i] + cols[i] - BORDER_W, rowY, BORDER_W, ROW_H).fill(hdrColors[i]);
+        if (isLastRowOnPage) {
+          doc.rect(colX[i], rowY + ROW_H - BORDER_W, cols[i], BORDER_W).fill(hdrColors[i]);
+        }
       }
       doc.fillColor('#000000');
 
