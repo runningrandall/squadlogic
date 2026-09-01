@@ -99,6 +99,28 @@ describe('CallUpListService', () => {
       });
     });
 
+    it('keeps each split section\'s own category name and times when an xlsx header row is split', async () => {
+      const buffer = await buildWorkbook([
+        HEADER_ROW,
+        ['Beginner 7th Grade Boys Split 1'],
+        ['STAGING TIME: 09/20/2025 @ 3:40 PM'],
+        ['START TIME: 09/20/2025 @ 3:55 PM'],
+        ['3:40 PM', 1, '85098', '5', 'OWEN UPSHAW', '2', '7', 'Lone Peak Jr Devo', 'Beginner 7th Grade Boys'],
+        ['Beginner 7th Grade Boys Split 2'],
+        ['STAGING TIME: 09/20/2025 @ 3:45 PM'],
+        ['START TIME: 09/20/2025 @ 4:00 PM'],
+        ['3:45 PM', 55, '85076', '5', 'JAY PARKES', '2', '7', 'Skyridge Junior Devo', 'Beginner 7th Grade Boys'],
+      ]);
+      const service = new CallUpListService(fakePublisher());
+      const result = await service.importCallUpList(buffer);
+
+      expect(result.participants).toHaveLength(2);
+      expect(result.categorySchedule).toEqual({
+        'Beginner 7th Grade Boys Split 1': { stageTime: '15:40', startTime: '15:55' },
+        'Beginner 7th Grade Boys Split 2': { stageTime: '15:45', startTime: '16:00' },
+      });
+    });
+
     it('rejects a file that is neither xlsx nor pdf', async () => {
       const service = new CallUpListService(fakePublisher());
       await expect(

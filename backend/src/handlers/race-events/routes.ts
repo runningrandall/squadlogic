@@ -159,15 +159,16 @@ export default async function raceEventRoutes(
         throw new ValidationError('teamName is required.');
       }
 
-      const teamParticipants = cached.participants.filter((p) => p.team === body.teamName);
-
       // Read wave config from DynamoDB — supplies wave grouping + laps only
       // (stage/start times come from the uploaded call-up list, cached.categorySchedule).
       const waveConfig = await services.waveConfig.getConfig();
 
+      // Pass the whole race field, not just this team's riders — generateSchedule does its own
+      // team filtering internally, but needs every team's entries first to size each category's
+      // call-up threshold off the real start-line headcount, not this team's subset of it.
       const schedule = services.schedule.generateSchedule(
         body.teamName,
-        teamParticipants,
+        cached.participants,
         waveConfig,
         cached.categorySchedule,
         cached.metadata.eventName,
@@ -203,12 +204,12 @@ export default async function raceEventRoutes(
       const cacheKey = `${request.params.eventId}:${body.teamName}`;
       let enriched = getCachedSchedule(cacheKey);
 
-      // If no cached schedule, generate one with defaults
+      // If no cached schedule, generate one with defaults. Pass the whole race field (not just
+      // this team's riders) — see the /schedule route above for why.
       if (!enriched) {
-        const teamParticipants = cached.participants.filter((p) => p.team === body.teamName);
         const waveConfig = await services.waveConfig.getConfig();
         const schedule = services.schedule.generateSchedule(
-          body.teamName, teamParticipants, waveConfig, cached.categorySchedule,
+          body.teamName, cached.participants, waveConfig, cached.categorySchedule,
           cached.metadata.eventName, cached.metadata.eventDate,
         );
         enriched = services.logistics.enrichSchedule(schedule);

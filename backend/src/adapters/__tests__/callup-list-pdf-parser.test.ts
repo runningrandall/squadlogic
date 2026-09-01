@@ -110,6 +110,35 @@ describe('parseCallUpListPdf', () => {
     expect(result.categories[0].participants[0].lastName).toBe('Rider');
   });
 
+  it('keeps a "Split N" section\'s own header name while still matching its rows (no "Split N" suffix themselves)', async () => {
+    const buffer = await buildPdf([
+      'Beginner 7th Grade Boys Split 1',
+      'STAGING TIME: 09/20/2025 @ 3:40 PM',
+      'START TIME: 09/20/2025 @ 3:55 PM',
+      '3:40 PM 1 85098 5 OWEN UPSHAW 2 7 Lone Peak Jr Devo Beginner 7th Grade Boys',
+      '3:40 PM 2 85008 5 BENSON BAXTER 2 7 Lehi Junior Devo Beginner 7th Grade Boys',
+      'Beginner 7th Grade Boys Split 2',
+      'STAGING TIME: 09/20/2025 @ 3:45 PM',
+      'START TIME: 09/20/2025 @ 4:00 PM',
+      '3:45 PM 55 85076 5 JAY PARKES 2 7 Skyridge Junior Devo Beginner 7th Grade Boys',
+    ]);
+
+    const result = await parseCallUpListPdf(buffer);
+
+    // Each split keeps its own distinct categoryName (with the "Split N" suffix) and its own
+    // stage/start time, so the two sections still print as separate groups — but the rows
+    // beneath each (which never carry "Split N" themselves) are no longer silently dropped.
+    expect(result.categories).toHaveLength(2);
+    expect(result.categories[0].categoryName).toBe('Beginner 7th Grade Boys Split 1');
+    expect(result.categories[0].stageTime).toBe('15:40');
+    expect(result.categories[0].participants).toHaveLength(2);
+    expect(result.categories[0].participants[0].category).toBe('Beginner 7th Grade Boys Split 1');
+    expect(result.categories[1].categoryName).toBe('Beginner 7th Grade Boys Split 2');
+    expect(result.categories[1].stageTime).toBe('15:45');
+    expect(result.categories[1].participants).toHaveLength(1);
+    expect(result.categories[1].participants[0].lastName).toBe('Parkes');
+  });
+
   it('ignores a data-shaped row whose trailing category name does not match the current header', async () => {
     const buffer = await buildPdf([
       'JV A Boys',

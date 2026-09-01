@@ -275,4 +275,53 @@ describe('WaveScheduleService', () => {
       expect(schedule.waves[0].categories[0].athletes[0].calledUp).toBe(false);
     });
   });
+
+  describe('an oversized category split across multiple sections ("Category Split 1", "Split 2")', () => {
+    const config: WaveConfig[] = [
+      {
+        configId: 'w9', organizationId: 'GLOBAL', waveName: 'Wave 9 - JD',
+        entries: [{ categoryName: 'Beginner 7th Grade Boys', stageTime: '', startTime: '', laps: 1 }],
+        createdAt: '', updatedAt: '',
+      },
+    ];
+    const sched: Record<string, CategorySchedule> = {
+      'Beginner 7th Grade Boys Split 1': { stageTime: '15:40', startTime: '15:55' },
+      'Beginner 7th Grade Boys Split 2': { stageTime: '15:45', startTime: '16:00' },
+    };
+    // callUpNumber ranks the whole combined field (1-30 here), not reset per split.
+    const ps: RaceParticipant[] = [
+      ...Array.from({ length: 20 }, (_, i) => ({
+        firstName: `A${i}`, lastName: `A${i}`, team: 'Team', category: 'Beginner 7th Grade Boys Split 1',
+        bibNumber: String(i), callUpNumber: String(i + 1),
+      })),
+      ...Array.from({ length: 10 }, (_, i) => ({
+        firstName: `B${i}`, lastName: `B${i}`, team: 'Team', category: 'Beginner 7th Grade Boys Split 2',
+        bibNumber: String(20 + i), callUpNumber: String(21 + i),
+      })),
+    ];
+
+    it('still groups both splits under the WaveConfig-assigned wave, as distinct categories', () => {
+      const schedule = service.generateSchedule('Team', ps, config, sched, 'Event', '2026-08-02');
+      expect(schedule.waves).toHaveLength(1);
+      expect(schedule.waves[0].waveName).toBe('Wave 9 - JD');
+      const names = schedule.waves[0].categories.map((c) => c.categoryName);
+      expect(names).toEqual(['Beginner 7th Grade Boys Split 1', 'Beginner 7th Grade Boys Split 2']);
+    });
+
+    it('gives each split its own stage/start time', () => {
+      const schedule = service.generateSchedule('Team', ps, config, sched, 'Event', '2026-08-02');
+      const [split1, split2] = schedule.waves[0].categories;
+      expect(split1.startTime).toBe('15:55');
+      expect(split2.startTime).toBe('16:00');
+    });
+
+    it('bases the call-up threshold on the combined field size across both splits, not each split alone', () => {
+      // Combined field = 30 → threshold 10 (25-49 band). Computed per-split (20 and 10) it
+      // would wrongly be 10 and 5 respectively, since callUpNumber ranks the whole category.
+      const schedule = service.generateSchedule('Team', ps, config, sched, 'Event', '2026-08-02');
+      const [split1, split2] = schedule.waves[0].categories;
+      expect(split1.athletes.filter((a) => a.calledUp)).toHaveLength(10);
+      expect(split2.athletes.filter((a) => a.calledUp)).toHaveLength(0);
+    });
+  });
 });

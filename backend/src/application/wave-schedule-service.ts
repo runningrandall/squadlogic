@@ -6,6 +6,7 @@ import type {
   ScheduleAthlete,
 } from '../domain/race-event.js';
 import type { WaveConfig } from '../domain/wave-config.js';
+import { stripCategorySplitSuffix } from '../lib/category-split.js';
 
 export interface CategorySchedule {
   stageTime: string;
@@ -47,10 +48,14 @@ export class WaveScheduleService {
 
     // Field size for the call-up threshold is the whole race's start-line headcount for a
     // category (every team combined) — not just this team's contingent — since call-up depth
-    // reflects who gets called out by name at the actual start, not a per-team subset.
+    // reflects who gets called out by name at the actual start, not a per-team subset. Keyed by
+    // base category name (a "Split N" suffix stripped): an oversized field printed across
+    // multiple split sections still ranks callUpNumber continuously across all of them, so the
+    // call-up depth must reflect the combined field, not just whichever split a rider is in.
     const categoryFieldSize = new Map<string, number>();
     for (const p of participants) {
-      categoryFieldSize.set(p.category, (categoryFieldSize.get(p.category) ?? 0) + 1);
+      const base = stripCategorySplitSuffix(p.category);
+      categoryFieldSize.set(base, (categoryFieldSize.get(base) ?? 0) + 1);
     }
 
     // WaveConfig now only supplies which named wave a category belongs to, and its lap count.
@@ -72,7 +77,10 @@ export class WaveScheduleService {
         calledUp: false, // set below once each category's field size is known
       };
 
-      const waveName = groupMap.get(p.category)?.waveName ?? p.category;
+      // A split section's category name ("... Split 1") won't itself appear in WaveConfig,
+      // which only knows the base category — fall back to that to still find the right wave.
+      const waveEntry = groupMap.get(p.category) ?? groupMap.get(stripCategorySplitSuffix(p.category));
+      const waveName = waveEntry?.waveName ?? p.category;
       if (!waveGroups.has(waveName)) {
         waveGroups.set(waveName, new Map());
       }
@@ -96,7 +104,7 @@ export class WaveScheduleService {
 
       for (const [categoryName, athletes] of sortedCategories) {
         const sched = categorySchedule[categoryName];
-        const laps = groupMap.get(categoryName)?.laps ?? null;
+        const laps = (groupMap.get(categoryName) ?? groupMap.get(stripCategorySplitSuffix(categoryName)))?.laps ?? null;
 
         // Sort athletes by lastName, then firstName
         athletes.sort((a, b) => {
@@ -106,10 +114,10 @@ export class WaveScheduleService {
 
         // Field size (this category's whole-race start-line headcount) determines how many
         // riders are called up by name; callUpNumber ranks the field, so the lowest N are called up.
-        // categoryFieldSize is guaranteed to have this category: it's built from `participants`,
-        // and categoryName only exists here because at least one teamParticipants row (a subset
-        // of participants) has it.
-        const threshold = callUpThreshold(categoryFieldSize.get(categoryName)!);
+        // categoryFieldSize is keyed by base category name (see above) and is guaranteed to have
+        // it: it's built from `participants`, and categoryName only exists here because at least
+        // one teamParticipants row (a subset of participants) has it.
+        const threshold = callUpThreshold(categoryFieldSize.get(stripCategorySplitSuffix(categoryName))!);
         for (const a of athletes) {
           const n = a.callUpNumber === null ? NaN : Number(a.callUpNumber);
           a.calledUp = Number.isInteger(n) && n > 0 && n <= threshold;

@@ -1,4 +1,5 @@
 import type { RaceParticipant } from '../domain/race-event.js';
+import { stripCategorySplitSuffix } from '../lib/category-split.js';
 import { TIME_LINE_REGEX, to24Hour, toIsoDate, toTitleCase } from './callup-list-format.js';
 import type { CallUpCategorySchedule, CallUpListImportResult } from './callup-list-parser.js';
 
@@ -123,7 +124,9 @@ export async function parseCallUpListPdf(buffer: Buffer): Promise<CallUpListImpo
 
     const dataMatch = line.match(DATA_PREFIX_REGEX);
     if (!dataMatch) {
-      // Anything else on its own line is a new category header.
+      // Anything else on its own line is a new category header. Kept verbatim (including a
+      // "Split N" suffix, if present) so a category split across sections still prints as
+      // distinct groups with their own stage/start times, rather than being blended into one.
       current = { categoryName: line, stageTime: '', startTime: '', participants: [] };
       categories.push(current);
       continue;
@@ -132,8 +135,11 @@ export async function parseCallUpListPdf(buffer: Buffer): Promise<CallUpListImpo
     if (!current) continue; // data row before any category header — ignore defensively
 
     const [, , callUpNumber, bibNumber, , rest] = dataMatch;
-    const body = rest.endsWith(current.categoryName)
-      ? rest.slice(0, rest.length - current.categoryName.length).trim()
+    // Each data row's own trailing text never carries a "Split N" suffix even when its header
+    // does, so match against the header with that suffix stripped.
+    const matchName = stripCategorySplitSuffix(current.categoryName);
+    const body = rest.endsWith(matchName)
+      ? rest.slice(0, rest.length - matchName.length).trim()
       : null;
     if (body === null) continue; // category name in the row doesn't match the current header — skip
 

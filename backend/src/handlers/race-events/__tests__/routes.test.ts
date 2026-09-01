@@ -236,6 +236,36 @@ describe('Race event routes', () => {
         'Team A', sampleParticipants, [], sampleCategorySchedule, 'Test Event', '2026-08-02',
       );
     });
+
+    it('passes the whole race field to generateSchedule, not just the requested team\'s riders', async () => {
+      // generateSchedule computes each category's call-up threshold off the whole-race field
+      // size and does its own team filtering internally — passing an already-filtered,
+      // single-team list here would silently cap every category's threshold at its lowest tier.
+      const multiTeamImport = sampleImportResult('multi-1');
+      multiTeamImport.participants = [
+        ...sampleParticipants,
+        { firstName: 'K', lastName: 'M', team: 'Team B', category: 'V Boys', bibNumber: '2', callUpNumber: '2' },
+      ];
+      multiTeamImport.metadata.teams = ['Team A', 'Team B'];
+      mockCallUpListService.importCallUpList.mockResolvedValue(multiTeamImport);
+      await app.inject({
+        method: 'POST', url: '/race-events/import/callup', headers,
+        payload: { fileData: Buffer.from('fake xlsx').toString('base64') },
+      });
+
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+
+      await app.inject({
+        method: 'POST', url: '/race-events/multi-1/schedule', headers,
+        payload: { teamName: 'Team A' },
+      });
+
+      expect(mockScheduleService.generateSchedule).toHaveBeenCalledWith(
+        'Team A', multiTeamImport.participants, [], sampleCategorySchedule, 'Test Event', '2026-08-02',
+      );
+    });
   });
 
   describe('POST /race-events/:eventId/export/pdf', () => {
@@ -298,6 +328,36 @@ describe('Race event routes', () => {
       expect(res.statusCode).toBe(200);
       expect(mockScheduleService.generateSchedule).toHaveBeenCalledWith(
         'Team A', sampleParticipants, [], sampleCategorySchedule, 'Test Event', '2026-08-02',
+      );
+    });
+
+    it('passes the whole race field to generateSchedule on the on-the-fly path too', async () => {
+      const multiTeamImport = sampleImportResult('multi-2');
+      multiTeamImport.participants = [
+        ...sampleParticipants,
+        { firstName: 'K', lastName: 'M', team: 'Team B', category: 'V Boys', bibNumber: '2', callUpNumber: '2' },
+      ];
+      multiTeamImport.metadata.teams = ['Team A', 'Team B'];
+      mockCallUpListService.importCallUpList.mockResolvedValue(multiTeamImport);
+      await app.inject({
+        method: 'POST', url: '/race-events/import/callup', headers,
+        payload: { fileData: Buffer.from('fake xlsx').toString('base64') },
+      });
+
+      mockBrandingService.getBranding.mockResolvedValue(null);
+      mockWaveConfigService.getConfig.mockResolvedValue([]);
+      mockScheduleService.generateSchedule.mockReturnValue(sampleSchedule);
+      mockLogisticsService.enrichSchedule.mockReturnValue(sampleSchedule);
+      mockPdfService.generateSchedulePdf.mockResolvedValue(Buffer.from('%PDF-1.4 test'));
+      mockPdfService.generateFilename.mockReturnValue('Team_A_schedule.pdf');
+
+      await app.inject({
+        method: 'POST', url: '/race-events/multi-2/export/pdf', headers,
+        payload: { teamName: 'Team A' },
+      });
+
+      expect(mockScheduleService.generateSchedule).toHaveBeenCalledWith(
+        'Team A', multiTeamImport.participants, [], sampleCategorySchedule, 'Test Event', '2026-08-02',
       );
     });
 
