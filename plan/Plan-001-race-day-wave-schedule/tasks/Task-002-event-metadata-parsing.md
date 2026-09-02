@@ -2,7 +2,7 @@
 id: Task-002
 title: "FR-002 — Event metadata parsing"
 type: Task
-status: done
+status: RETIRED
 track: A
 priority: P0
 relationships:
@@ -28,6 +28,8 @@ relationships:
     type: verifies
 ---
 # Task-002: FR-002 — Event metadata parsing
+
+**Status: RETIRED** — superseded by Task-016 (FR-013 call-up list category schedule parsing); there is no RaceResult page to fetch anymore.
 
 ## Scope
 Implement the RaceResult page fetch and metadata extraction. Fetch the event page HTML, parse JSON-LD for event name/date/location, extract teams from the ListControl select element. Establish the HTTP client + timeout + error mapping infrastructure reused by Task-003.

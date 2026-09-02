@@ -11,6 +11,8 @@ relationships:
 
 # [FR-002] Parse race event metadata from RaceResult
 
+**Status: RETIRED** — RaceResult page fetch/parse was replaced by parsing the uploaded Call-Up List .xlsx directly; see [FR-013](./FR-013-parse-category-schedule.md) (schedule/date extraction) and [FR-012](./FR-012-validate-callup-list-upload.md) (event name/location overrides) for the current requirements.
+
 ## Description
 
 When a validated RaceResult URL is submitted, the system SHALL fetch the page content and extract the race event metadata including the event name, event date, teams found in the #divRRPublish > div:nth-child(2) > div.SelectorParent.OnlyOneList > div.Selector select list, and event location. When the system cannot fetch the page or cannot extract the required metadata fields, it SHALL return an error identifying which operation failed.

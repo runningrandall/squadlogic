@@ -47,7 +47,21 @@ describe('TeamBrandingEntity', () => {
     expect((d as () => string)()).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('has updatedAt set function', () => {
-    expect(typeof TeamBrandingEntity.schema.attributes.updatedAt.set).toBe('function');
+  it('has createdAt set function returning ISO string', () => {
+    const s = TeamBrandingEntity.schema.attributes.createdAt.set;
+    expect(typeof s).toBe('function');
+    expect((s as () => string)()).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('has updatedAt default function returning ISO string', () => {
+    const d = TeamBrandingEntity.schema.attributes.updatedAt.default;
+    expect(typeof d).toBe('function');
+    expect((d as () => string)()).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('has updatedAt set function returning ISO string', () => {
+    const s = TeamBrandingEntity.schema.attributes.updatedAt.set;
+    expect(typeof s).toBe('function');
+    expect((s as () => string)()).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });

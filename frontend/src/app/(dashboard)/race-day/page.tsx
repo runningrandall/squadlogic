@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { formatTime12Hour } from '@/lib/time-format';
 
-type Step = 'url' | 'team' | 'schedule';
+type Step = 'upload' | 'team' | 'schedule';
 
 interface ImportResult {
   eventId: string;
@@ -21,7 +22,7 @@ interface TeamEntry {
 }
 
 interface AthleteLogistics {
-  arrivalTime: string;
+  waveMeetingTime: string;
   warmupStart: string;
   warmupEnd: string;
   stagingTime: string;
@@ -32,6 +33,7 @@ interface ScheduleAthlete {
   firstName: string;
   lastName: string;
   bibNumber: string;
+  callUpNumber: string | null;
   logistics?: AthleteLogistics;
 }
 
@@ -56,9 +58,24 @@ interface Schedule {
   waves: WaveGroup[];
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 export default function RaceDayPage() {
-  const [step, setStep] = useState<Step>('url');
-  const [url, setUrl] = useState('');
+  const [step, setStep] = useState<Step>('upload');
+  const [fileName, setFileName] = useState('');
+  const [fileData, setFileData] = useState('');
+  const [eventName, setEventName] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [selectedTeam, setSelectedTeam] = useState('');
@@ -68,11 +85,27 @@ export default function RaceDayPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [sheetsUrl, setSheetsUrl] = useState<string | null>(null);
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const buffer = ev.target?.result as ArrayBuffer | undefined;
+      setFileData(buffer ? arrayBufferToBase64(buffer) : '');
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
   async function handleImport() {
     setError(null);
     setIsLoading(true);
     try {
-      const result = await api.post<ImportResult>('/race-events/import', { url });
+      const result = await api.post<ImportResult>('/race-events/import/callup', {
+        fileData,
+        eventName: eventName || undefined,
+        eventLocation: eventLocation || undefined,
+      });
       setImportResult(result);
 
       const teamData = await api.get<{ teams: TeamEntry[] }>(
@@ -81,7 +114,7 @@ export default function RaceDayPage() {
       setTeams(teamData.teams);
       setStep('team');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import event');
+      setError(err instanceof Error ? err.message : 'Failed to import call-up list');
     } finally {
       setIsLoading(false);
     }
@@ -105,33 +138,27 @@ export default function RaceDayPage() {
     }
   }
 
-  async function handleExportPdf() {
+  function downloadBlob(blob: Blob, filename: string) {
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
+  async function handleExportPdf(variant: 'schedule' | 'roster' | 'pocket' = 'schedule') {
     if (!importResult) return;
     setIsExporting(true);
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/race-events/${importResult.eventId}/export/pdf`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            teamName: selectedTeam,
-            waveConfig: [],
-          }),
-        },
+      const blob = await api.postBlob(
+        `/race-events/${importResult.eventId}/export/pdf`,
+        { teamName: selectedTeam, variant },
       );
-
-      if (!response.ok) throw new Error('PDF export failed');
-
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = `${selectedTeam.replace(/\s+/g, '_')}_${importResult.eventDate}_schedule.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      const filename = `${selectedTeam.replace(/\s+/g, '_')}_${importResult.eventDate}_${variant}.pdf`;
+      downloadBlob(blob, filename);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'PDF export failed');
     } finally {
@@ -140,8 +167,12 @@ export default function RaceDayPage() {
   }
 
   function handleReset() {
-    setStep('url');
-    setUrl('');
+    setStep('upload');
+    setFileName('');
+    setFileData('');
+    setEventName('');
+    setEventLocation('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setImportResult(null);
     setTeams([]);
     setSelectedTeam('');
@@ -160,7 +191,7 @@ export default function RaceDayPage() {
           >
             Team Branding
           </Link>
-          {step !== 'url' && (
+          {step !== 'upload' && (
             <button
               onClick={handleReset}
               className="text-sm text-gray-500 hover:text-gray-700"
@@ -173,13 +204,13 @@ export default function RaceDayPage() {
 
       {/* Step Indicator */}
       <div className="flex items-center gap-2 mb-8">
-        {(['url', 'team', 'schedule'] as Step[]).map((s, i) => (
+        {(['upload', 'team', 'schedule'] as Step[]).map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                 step === s
                   ? 'bg-blue-600 text-white'
-                  : i < ['url', 'team', 'schedule'].indexOf(step)
+                  : i < ['upload', 'team', 'schedule'].indexOf(step)
                     ? 'bg-green-500 text-white'
                     : 'bg-gray-200 text-gray-500'
               }`}
@@ -191,7 +222,7 @@ export default function RaceDayPage() {
                 step === s ? 'font-medium text-gray-900' : 'text-gray-500'
               }`}
             >
-              {s === 'url' ? 'Import' : s === 'team' ? 'Select Team' : 'Schedule'}
+              {s === 'upload' ? 'Upload' : s === 'team' ? 'Select Team' : 'Schedule'}
             </span>
             {i < 2 && <div className="w-12 h-px bg-gray-300" />}
           </div>
@@ -204,25 +235,61 @@ export default function RaceDayPage() {
         </div>
       )}
 
-      {/* Step 1: URL Input */}
-      {step === 'url' && (
+      {/* Step 1: Upload */}
+      {step === 'upload' && (
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Import from RaceResult</h2>
           <p className="text-sm text-gray-500 mb-4">
-            Paste a RaceResult event URL to import the participant roster and generate
-            your team&apos;s race day schedule.
+            Upload the league&apos;s call-up list (.xlsx or .pdf) to import categories, staging/start
+            times, and staging numbers, and generate your team&apos;s race day schedule.
           </p>
-          <div className="flex gap-3">
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://my.raceresult.com/411620/"
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Event Name</label>
+                <input
+                  type="text"
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                  placeholder="UTAH HS MTB 2026 - REGION 5"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <input
+                  type="text"
+                  value={eventLocation}
+                  onChange={(e) => setEventLocation(e.target.value)}
+                  placeholder="Beaver County, UT"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Call-Up List File (.xlsx or .pdf) *</label>
+              <div className="flex gap-3 items-center">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Choose file
+                </button>
+                <span className="text-sm text-gray-500">
+                  {fileName || 'No file selected'}
+                </span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </div>
+            </div>
             <button
               onClick={handleImport}
-              disabled={!url || isLoading}
+              disabled={!fileData || isLoading}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
             >
               {isLoading ? 'Importing...' : 'Import'}
@@ -279,11 +346,25 @@ export default function RaceDayPage() {
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={handleExportPdf}
+                  onClick={() => handleExportPdf('schedule')}
                   disabled={isExporting}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 text-sm font-medium"
                 >
                   {isExporting ? 'Exporting...' : 'Export PDF'}
+                </button>
+                <button
+                  onClick={() => handleExportPdf('roster')}
+                  disabled={isExporting}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 text-sm font-medium"
+                >
+                  {isExporting ? 'Exporting...' : 'Check-In Roster'}
+                </button>
+                <button
+                  onClick={() => handleExportPdf('pocket')}
+                  disabled={isExporting}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 text-sm font-medium"
+                >
+                  {isExporting ? 'Exporting...' : 'Pocket Sheet'}
                 </button>
                 <button
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 text-sm font-medium"
@@ -347,7 +428,7 @@ export default function RaceDayPage() {
                     <div className="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 flex justify-between">
                       <span>{cat.categoryName}</span>
                       <span className="text-gray-500">
-                        Stage: {cat.stageTime} &mdash; Start: {cat.startTime} &mdash;{' '}
+                        Stage: {formatTime12Hour(cat.stageTime)} &mdash; Start: {formatTime12Hour(cat.startTime)} &mdash;{' '}
                         {cat.laps ? `${cat.laps} laps` : ''}
                       </span>
                     </div>
@@ -355,8 +436,9 @@ export default function RaceDayPage() {
                       <thead>
                         <tr className="text-left text-xs text-gray-500 border-b">
                           <th className="px-4 py-2 font-medium">Athlete</th>
+                          <th className="px-4 py-2 font-medium">Staging #</th>
                           <th className="px-4 py-2 font-medium">Bib</th>
-                          <th className="px-4 py-2 font-medium">Arrive</th>
+                          <th className="px-4 py-2 font-medium">Wave Meeting</th>
                           <th className="px-4 py-2 font-medium">Warmup</th>
                           <th className="px-4 py-2 font-medium">WU End</th>
                           <th className="px-4 py-2 font-medium">Staging</th>
@@ -372,13 +454,22 @@ export default function RaceDayPage() {
                             <td className="px-4 py-2 font-medium">
                               {athlete.lastName}, {athlete.firstName}
                             </td>
+                            <td className="px-4 py-2">{athlete.callUpNumber ?? '—'}</td>
                             <td className="px-4 py-2">{athlete.bibNumber}</td>
-                            <td className="px-4 py-2">{athlete.logistics?.arrivalTime ?? '—'}</td>
-                            <td className="px-4 py-2">{athlete.logistics?.warmupStart ?? '—'}</td>
-                            <td className="px-4 py-2">{athlete.logistics?.warmupEnd ?? '—'}</td>
-                            <td className="px-4 py-2">{athlete.logistics?.stagingTime ?? '—'}</td>
+                            <td className="px-4 py-2">
+                              {athlete.logistics?.waveMeetingTime ? formatTime12Hour(athlete.logistics.waveMeetingTime) : '—'}
+                            </td>
+                            <td className="px-4 py-2">
+                              {athlete.logistics?.warmupStart ? formatTime12Hour(athlete.logistics.warmupStart) : '—'}
+                            </td>
+                            <td className="px-4 py-2">
+                              {athlete.logistics?.warmupEnd ? formatTime12Hour(athlete.logistics.warmupEnd) : '—'}
+                            </td>
+                            <td className="px-4 py-2">
+                              {athlete.logistics?.stagingTime ? formatTime12Hour(athlete.logistics.stagingTime) : '—'}
+                            </td>
                             <td className="px-4 py-2 font-semibold">
-                              {athlete.logistics?.raceStart ?? '—'}
+                              {athlete.logistics?.raceStart ? formatTime12Hour(athlete.logistics.raceStart) : '—'}
                             </td>
                           </tr>
                         ))}

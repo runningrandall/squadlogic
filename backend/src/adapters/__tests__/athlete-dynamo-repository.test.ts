@@ -60,6 +60,20 @@ describe('AthleteDynamoRepository', () => {
       expect(result).toEqual(mockAthlete);
     });
 
+    it('creates athlete without phone or positions (uses ?? defaults)', async () => {
+      const noDefaults = {
+        athleteId: 'ath-789',
+        organizationId: 'org-123',
+        firstName: 'Bob',
+        lastName: 'Brown',
+        email: 'bob@example.com',
+        // no phone, no positions
+      };
+      mockGo.mockResolvedValueOnce({ data: { ...noDefaults, phone: '', positions: [], status: 'active' } });
+      await repo.create(noDefaults as any);
+      expect(AthleteEntity.create).toHaveBeenCalled();
+    });
+
     it('creates athlete with minimal fields (no optional values)', async () => {
       const minimalAthlete = {
         athleteId: 'ath-456',

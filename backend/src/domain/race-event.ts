@@ -1,22 +1,12 @@
 import { z } from 'zod';
 
-const RACERESULT_URL_REGEX = /^https:\/\/my\.raceresult\.com\/(\d+)\/?$/;
+export const CallUpListUploadSchema = z.object({
+  fileData: z.string().min(1, 'fileData (base64-encoded .xlsx or .pdf) is required'),
+  eventName: z.string().optional(),
+  eventLocation: z.string().optional(),
+});
 
-export const RaceResultUrlSchema = z
-  .string()
-  .min(1, 'URL is required')
-  .regex(
-    RACERESULT_URL_REGEX,
-    'URL must be a valid RaceResult event URL (e.g., https://my.raceresult.com/411620/)',
-  )
-  .transform((url) => {
-    const match = url.match(RACERESULT_URL_REGEX)!;
-    const eventId = match[1];
-    const normalizedUrl = url.endsWith('/') ? url : `${url}/`;
-    return { url: normalizedUrl, eventId };
-  });
-
-export type ValidatedRaceResultUrl = z.output<typeof RaceResultUrlSchema>;
+export type CallUpListUploadDto = z.output<typeof CallUpListUploadSchema>;
 
 export interface RaceEventMetadata {
   eventName: string;
@@ -33,6 +23,7 @@ export interface RaceParticipant {
   team: string;
   category: string;
   bibNumber: string;
+  callUpNumber: string | null;
 }
 
 export interface WaveScheduleEntry {
@@ -60,19 +51,15 @@ export interface ScheduleAthlete {
   firstName: string;
   lastName: string;
   bibNumber: string;
+  callUpNumber: string | null;
+  calledUp: boolean;
   logistics?: AthleteLogistics;
 }
 
 export interface AthleteLogistics {
-  arrivalTime: string;
+  waveMeetingTime: string;
   warmupStart: string;
   warmupEnd: string;
   stagingTime: string;
   raceStart: string;
 }
-
-export const ImportRaceEventSchema = z.object({
-  url: RaceResultUrlSchema,
-});
-
-export type ImportRaceEventDto = z.input<typeof ImportRaceEventSchema>;

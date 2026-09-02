@@ -50,6 +50,15 @@ describe('WaveConfigDynamoRepository', () => {
     expect(result.waveName).toBe('Wave 1 - HS');
   });
 
+  it('creates an entry with undefined laps (omits laps key)', async () => {
+    mockCreate.mockResolvedValue({ data: sampleConfig });
+    await repo.create({
+      configId: 'w1', organizationId: 'GLOBAL', waveName: 'Wave 1 - HS',
+      entries: [{ categoryName: 'JV B Boys', stageTime: '07:40', startTime: '08:00' }],
+    });
+    expect(mockCreate).toHaveBeenCalled();
+  });
+
   it('gets config by id', async () => {
     mockGet.mockResolvedValue({ data: sampleConfig });
     const result = await repo.getById('GLOBAL', 'w1');
@@ -68,11 +77,35 @@ describe('WaveConfigDynamoRepository', () => {
     expect(result.items).toHaveLength(1);
   });
 
+  it('passes cursor when paginating', async () => {
+    mockQueryGo.mockResolvedValue({ data: [], cursor: null });
+    await repo.listByOrganization('GLOBAL', { cursor: 'page2', limit: 5 });
+    // mockQueryGo receives (organizationIdArg, goOptions) — check the options arg
+    expect(mockQueryGo).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ cursor: 'page2' }),
+    );
+  });
+
+  it('returns cursor from list response', async () => {
+    mockQueryGo.mockResolvedValue({ data: [sampleConfig], cursor: 'next-token' });
+    const result = await repo.listByOrganization('GLOBAL');
+    expect(result.cursor).toBe('next-token');
+  });
+
   it('updates wave config', async () => {
     mockPatchGo.mockResolvedValue({ data: { ...sampleConfig, waveName: 'Updated' } });
     const result = await repo.update('GLOBAL', 'w1', { waveName: 'Updated' });
     expect(result.waveName).toBe('Updated');
     expect(mockPatch).toHaveBeenCalledWith({ organizationId: 'GLOBAL', configId: 'w1' });
+  });
+
+  it('updates only entries when waveName is not provided', async () => {
+    const newEntries = [{ categoryName: 'Varsity Boys', stageTime: '09:50', startTime: '10:10', laps: 4 }];
+    mockPatchGo.mockResolvedValue({ data: { ...sampleConfig, entries: newEntries } });
+    const result = await repo.update('GLOBAL', 'w1', { entries: newEntries });
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ entries: newEntries }));
+    expect(result.entries).toEqual(newEntries);
   });
 
   it('deletes wave config', async () => {

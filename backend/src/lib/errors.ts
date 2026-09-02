@@ -38,14 +38,29 @@ export class ForbiddenError extends Error {
   }
 }
 
-type AppError = NotFoundError | ValidationError | ConflictError | ForbiddenError;
+export class TooManyRequestsError extends Error {
+  public readonly statusCode = 429;
+
+  constructor(message = 'Too many requests') {
+    super(message);
+    this.name = 'TooManyRequestsError';
+  }
+}
+
+type AppError =
+  | NotFoundError
+  | ValidationError
+  | ConflictError
+  | ForbiddenError
+  | TooManyRequestsError;
 
 function isAppError(error: unknown): error is AppError {
   return (
     error instanceof NotFoundError ||
     error instanceof ValidationError ||
     error instanceof ConflictError ||
-    error instanceof ForbiddenError
+    error instanceof ForbiddenError ||
+    error instanceof TooManyRequestsError
   );
 }
 

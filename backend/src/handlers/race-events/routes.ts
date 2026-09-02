@@ -1,9 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { RaceResultUrlSchema } from '../../domain/race-event.js';
-import { RaceResultClient } from '../../adapters/raceresult-client.js';
-import { RaceResultHtmlParser } from '../../adapters/raceresult-parser.js';
+import { CallUpListUploadSchema } from '../../domain/race-event.js';
 import { EventBridgePublisher } from '../../adapters/eventbridge-publisher.js';
-import { RaceEventService } from '../../application/race-event-service.js';
+import { CallUpListService } from '../../application/callup-list-service.js';
 import { WaveScheduleService } from '../../application/wave-schedule-service.js';
 import { LogisticsService } from '../../application/logistics-service.js';
 import { PdfExportService } from '../../application/pdf-export-service.js';
@@ -14,16 +12,18 @@ import { WaveConfigService } from '../../application/wave-config-service.js';
 import { validate } from '../../lib/validation.js';
 import { success } from '../../lib/response.js';
 import { ValidationError } from '../../lib/errors.js';
-import type { RaceEventMetadata, RaceParticipant, TeamWaveSchedule } from '../../domain/race-event.js';
+import type { TeamWaveSchedule } from '../../domain/race-event.js';
+import { setRaceSession, getRaceSession } from '../../lib/race-session-store.js';
+import type { RaceSessionData } from '../../lib/race-session-store.js';
+import { enforceRateLimit } from '../../lib/rate-limiter.js';
+
+const CALLUP_IMPORT_RATE_LIMIT = 100;
+const CALLUP_IMPORT_RATE_WINDOW_SECONDS = 5 * 60;
 
 function createServices() {
   const eventPublisher = new EventBridgePublisher();
   return {
-    raceEvent: new RaceEventService(
-      new RaceResultClient(),
-      new RaceResultHtmlParser(),
-      eventPublisher,
-    ),
+    callUpList: new CallUpListService(eventPublisher),
     waveConfig: new WaveConfigService(
       new WaveConfigDynamoRepository(),
       eventPublisher,
@@ -40,36 +40,70 @@ export default async function raceEventRoutes(
 ): Promise<void> {
   const services = createServices();
 
-  // In-memory cache for imported event data (per-session, ephemeral)
-  const importCache = new Map<
-    string,
-    { metadata: RaceEventMetadata; participants: RaceParticipant[] }
-  >();
+  // In-memory cache (warm path) — falls back to DynamoDB across Lambda instances
+  const importCache = new Map<string, RaceSessionData>();
 
-  // Schedule cache keyed by eventId:teamName
-  const scheduleCache = new Map<string, TeamWaveSchedule>();
+  // Schedule cache keyed by eventId:teamName. Short TTL rather than unbounded: an
+  // enriched schedule bakes in wave-config values (laps, groupings) at generation
+  // time, so an unbounded cache would keep serving a stale export indefinitely after
+  // a WaveConfig correction, for as long as the Lambda container stays warm.
+  const SCHEDULE_CACHE_TTL_MS = 5 * 60 * 1000;
+  const scheduleCache = new Map<string, { value: TeamWaveSchedule; expiresAt: number }>();
 
-  // POST /race-events/import — validate URL and import event data
+  function cacheSchedule(key: string, value: TeamWaveSchedule): void {
+    scheduleCache.set(key, { value, expiresAt: Date.now() + SCHEDULE_CACHE_TTL_MS });
+  }
+
+  function getCachedSchedule(key: string): TeamWaveSchedule | undefined {
+    const entry = scheduleCache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      scheduleCache.delete(key);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  // Resolve import session: check in-memory first, then DynamoDB
+  async function resolveImport(eventId: string): Promise<RaceSessionData | null> {
+    const cached = importCache.get(eventId);
+    if (cached) return cached;
+    const session = await getRaceSession(eventId);
+    if (session) importCache.set(eventId, session); // warm local cache
+    return session;
+  }
+
+  // POST /race-events/import/callup — upload a league call-up list (.xlsx or .pdf, auto-detected) and import it
   fastify.post(
-    '/race-events/import',
+    '/race-events/import/callup',
     async (
-      request: FastifyRequest<{ Body: { url: unknown } }>,
+      request: FastifyRequest<{
+        Body: { fileData: unknown; eventName?: unknown; eventLocation?: unknown };
+      }>,
       reply,
     ) => {
-      const body = request.body as { url: unknown };
-      if (!body?.url) {
-        throw new ValidationError(
-          'URL must be a valid RaceResult event URL (e.g., https://my.raceresult.com/411620/)',
-        );
-      }
+      await enforceRateLimit(
+        request.ip,
+        CALLUP_IMPORT_RATE_LIMIT,
+        CALLUP_IMPORT_RATE_WINDOW_SECONDS,
+      );
 
-      const { url, eventId } = validate(RaceResultUrlSchema, body.url);
-      const result = await services.raceEvent.importEvent(url, eventId);
+      const dto = validate(CallUpListUploadSchema, request.body);
+      const buffer = Buffer.from(dto.fileData, 'base64');
 
-      importCache.set(eventId, {
+      const result = await services.callUpList.importCallUpList(buffer, {
+        eventName: dto.eventName,
+        eventLocation: dto.eventLocation,
+      });
+
+      const eventId = result.metadata.eventId;
+      const session: RaceSessionData = {
         metadata: result.metadata,
         participants: result.participants,
-      });
+        categorySchedule: result.categorySchedule,
+      };
+      importCache.set(eventId, session);
+      await setRaceSession(eventId, session);
 
       return success(reply, {
         eventId,
@@ -89,14 +123,14 @@ export default async function raceEventRoutes(
       request: FastifyRequest<{ Params: { eventId: string } }>,
       reply,
     ) => {
-      const cached = importCache.get(request.params.eventId);
+      const cached = await resolveImport(request.params.eventId);
       if (!cached) {
         throw new ValidationError(
-          'Event not imported. Submit the event URL first via POST /race-events/import.',
+          'Event not imported. Upload a call-up list first via POST /race-events/import/callup.',
         );
       }
 
-      const teams = services.raceEvent.getTeamList(
+      const teams = services.callUpList.getTeamList(
         cached.metadata.teams,
         cached.participants,
       );
@@ -105,59 +139,46 @@ export default async function raceEventRoutes(
     },
   );
 
-  // POST /race-events/:eventId/schedule — generate enriched wave schedule from DynamoDB config
+  // POST /race-events/:eventId/schedule — generate enriched wave schedule
   fastify.post(
     '/race-events/:eventId/schedule',
     async (
       request: FastifyRequest<{
         Params: { eventId: string };
-        Body: {
-          teamName: string;
-          arrivalOverrides?: Record<string, number>;
-          warmupDurationMinutes?: number;
-          stagingBeforeMinutes?: number;
-        };
+        Body: { teamName: string };
       }>,
       reply,
     ) => {
-      const cached = importCache.get(request.params.eventId);
+      const cached = await resolveImport(request.params.eventId);
       if (!cached) {
         throw new ValidationError('Event not imported.');
       }
 
-      const body = request.body as {
-        teamName: string;
-        arrivalOverrides?: Record<string, number>;
-        warmupDurationMinutes?: number;
-        stagingBeforeMinutes?: number;
-      };
-
+      const body = request.body as { teamName: string };
       if (!body.teamName) {
         throw new ValidationError('teamName is required.');
       }
 
-      // Read wave config from DynamoDB (seeds defaults on first access)
+      // Read wave config from DynamoDB — supplies wave grouping + laps only
+      // (stage/start times come from the uploaded call-up list, cached.categorySchedule).
       const waveConfig = await services.waveConfig.getConfig();
 
-      // Generate schedule grouped by wave/category
+      // Pass the whole race field, not just this team's riders — generateSchedule does its own
+      // team filtering internally, but needs every team's entries first to size each category's
+      // call-up threshold off the real start-line headcount, not this team's subset of it.
       const schedule = services.schedule.generateSchedule(
         body.teamName,
         cached.participants,
         waveConfig,
+        cached.categorySchedule,
         cached.metadata.eventName,
         cached.metadata.eventDate,
       );
 
-      // Calculate logistics with category-aware defaults
-      const logisticsConfig = services.logistics.calculateDefaults(waveConfig, {
-        arrivalOverrides: body.arrivalOverrides,
-        warmupDurationMinutes: body.warmupDurationMinutes,
-        stagingBeforeMinutes: body.stagingBeforeMinutes,
-      });
-      const enriched = services.logistics.enrichSchedule(schedule, logisticsConfig);
+      const enriched = services.logistics.enrichSchedule(schedule);
 
       // Cache for subsequent PDF export
-      scheduleCache.set(`${request.params.eventId}:${body.teamName}`, enriched);
+      cacheSchedule(`${request.params.eventId}:${body.teamName}`, enriched);
 
       return success(reply, enriched);
     },
@@ -169,49 +190,53 @@ export default async function raceEventRoutes(
     async (
       request: FastifyRequest<{
         Params: { eventId: string };
-        Body: { teamName: string };
+        Body: { teamName: string; variant?: 'schedule' | 'roster' | 'pocket' };
       }>,
       reply,
     ) => {
-      const cached = importCache.get(request.params.eventId);
+      const cached = await resolveImport(request.params.eventId);
       if (!cached) {
         throw new ValidationError('Event not imported.');
       }
 
-      const body = request.body as { teamName: string };
+      const body = request.body as { teamName: string; variant?: 'schedule' | 'roster' | 'pocket' };
+      const variant = body.variant ?? 'schedule';
       const cacheKey = `${request.params.eventId}:${body.teamName}`;
-      let enriched = scheduleCache.get(cacheKey);
+      let enriched = getCachedSchedule(cacheKey);
 
-      // If no cached schedule, generate one with defaults
+      // If no cached schedule, generate one with defaults. Pass the whole race field (not just
+      // this team's riders) — see the /schedule route above for why.
       if (!enriched) {
         const waveConfig = await services.waveConfig.getConfig();
         const schedule = services.schedule.generateSchedule(
-          body.teamName, cached.participants, waveConfig,
+          body.teamName, cached.participants, waveConfig, cached.categorySchedule,
           cached.metadata.eventName, cached.metadata.eventDate,
         );
-        const logisticsConfig = services.logistics.calculateDefaults(waveConfig);
-        enriched = services.logistics.enrichSchedule(schedule, logisticsConfig);
+        enriched = services.logistics.enrichSchedule(schedule);
       }
 
-      // Get branding
+      // Get branding (non-fatal — PDF generates without branding on lookup failure)
+      /* v8 ignore next */
       const userId = request.userId ?? 'anonymous';
-      const branding = await services.branding.getBranding(userId);
+      const branding = await services.branding.getBranding(userId).catch(() => null);
+      const brandingArg = branding ? {
+        teamDisplayName: branding.teamDisplayName,
+        primaryColor: branding.primaryColor,
+        tertiaryColor: branding.tertiaryColor,
+        logoUrl: branding.logoUrl,
+      } : undefined;
 
-      // Generate PDF
-      const pdfBuffer = await services.pdf.generatePdf(
-        enriched,
-        branding ? {
-          teamDisplayName: branding.teamDisplayName,
-          primaryColor: branding.primaryColor,
-          tertiaryColor: branding.tertiaryColor,
-          logoUrl: branding.logoUrl,
-        } : undefined,
-        cached.metadata.eventLocation,
-      );
+      // Generate the requested PDF variant
+      const pdfBuffer = variant === 'roster'
+        ? await services.pdf.generateRosterPdf(enriched, brandingArg, cached.metadata.eventLocation)
+        : variant === 'pocket'
+          ? await services.pdf.generatePocketPdf(enriched, brandingArg)
+          : await services.pdf.generateSchedulePdf(enriched, brandingArg, cached.metadata.eventLocation);
 
       const filename = services.pdf.generateFilename(
         branding?.teamDisplayName ?? body.teamName,
         cached.metadata.eventDate,
+        variant,
       );
 
       return reply

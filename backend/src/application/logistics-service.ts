@@ -10,6 +10,13 @@ export interface LogisticsConfig {
   stagingBeforeMinutes: number;
 }
 
+// Fixed race-day timing constants (business rules, not configurable)
+const WAVE_MEETING_LEAD = 60;   // wave meeting starts this many minutes before the first start
+const MEETING_DURATION  = 10;   // wave meeting lasts 10 minutes → WU start = meeting + 10
+const STAGING_BEFORE    = 15;   // staging opens 15 minutes before race start
+const STAGING_BUFFER    = 5;    // buffer between WU end and staging (5 min transition)
+// WU end = startTime - STAGING_BEFORE - STAGING_BUFFER = startTime - 20
+
 const VARSITY_JVA_PATTERN = /varsity|jv\s*a/i;
 
 export class LogisticsService {
@@ -41,53 +48,49 @@ export class LogisticsService {
     };
   }
 
-  enrichSchedule(
-    schedule: TeamWaveSchedule,
-    config: LogisticsConfig,
-  ): TeamWaveSchedule {
+  // Per-wave timing (same for every category within a wave):
+  //   waveMeeting  = earliest start in that wave − 60 min
+  //   warmupStart  = waveMeeting + 10 min  (after 10-min team meeting)
+  // Per-category timing (each category has its own start time):
+  //   stagingTime  = categoryStart − 15 min
+  //   warmupEnd    = stagingTime − 5 min (bathroom/walk-time buffer)
+  enrichSchedule(schedule: TeamWaveSchedule): TeamWaveSchedule {
     return {
       ...schedule,
-      waves: schedule.waves.map((wave) => ({
-        ...wave,
-        categories: wave.categories.map((cat) => {
-          const arrivalBefore =
-            config.arrivalOverrides.get(wave.waveName) ?? 60;
+      waves: schedule.waves.map((wave) => {
+        const waveStartMinutes = wave.categories
+          .map((cat) => this.parseTime(cat.startTime))
+          .filter((t) => t > 0);
+        const firstStart = waveStartMinutes.length > 0 ? Math.min(...waveStartMinutes) : 0;
 
-          const logistics = this.calculateTimeline(
-            cat.startTime,
-            cat.stageTime,
-            arrivalBefore,
-            config.warmupDurationMinutes,
-          );
+        const waveMeetingTime = firstStart > 0 ? this.formatTime(firstStart - WAVE_MEETING_LEAD) : '';
+        const warmupStart     = firstStart > 0 ? this.formatTime(firstStart - WAVE_MEETING_LEAD + MEETING_DURATION) : '';
 
-          return {
+        return {
+          ...wave,
+          categories: wave.categories.map((cat) => ({
             ...cat,
             athletes: cat.athletes.map((a) => ({
               ...a,
-              logistics,
+              logistics: this.calculateTimeline(cat.startTime, waveMeetingTime, warmupStart),
             })),
-          };
-        }),
-      })),
+          })),
+        };
+      }),
     };
   }
 
-  calculateTimeline(
-    startTime: string,
-    stageTime: string,
-    arrivalBeforeMinutes: number,
-    warmupDurationMinutes: number,
-  ): AthleteLogistics {
+  calculateTimeline(startTime: string, waveMeetingTime: string, warmupStart: string): AthleteLogistics {
+    if (!waveMeetingTime) {
+      return { waveMeetingTime: '', warmupStart: '', warmupEnd: '', stagingTime: startTime, raceStart: startTime };
+    }
     const startMinutes = this.parseTime(startTime);
-    const arrivalMinutes = startMinutes - arrivalBeforeMinutes;
-    const warmupEndMinutes = arrivalMinutes + warmupDurationMinutes;
-
     return {
-      arrivalTime: this.formatTime(arrivalMinutes),
-      warmupStart: this.formatTime(arrivalMinutes),
-      warmupEnd: this.formatTime(warmupEndMinutes),
-      stagingTime: stageTime,
-      raceStart: startTime,
+      waveMeetingTime,
+      warmupStart,
+      warmupEnd:   this.formatTime(startMinutes - STAGING_BEFORE - STAGING_BUFFER),
+      stagingTime: this.formatTime(startMinutes - STAGING_BEFORE),
+      raceStart:   startTime,
     };
   }
 

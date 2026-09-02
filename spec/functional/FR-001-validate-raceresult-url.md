@@ -11,6 +11,8 @@ relationships:
 
 # [FR-001] Accept and validate RaceResult event URL
 
+**Status: RETIRED** — RaceResult URL import was replaced by direct upload of the league's Call-Up List .xlsx export; see [FR-012](./FR-012-validate-callup-list-upload.md) for the current upload validation requirement.
+
 ## Description
 
 The system SHALL accept a URL string as input and validate that it conforms to the RaceResult event URL pattern (`https://my.raceresult.com/{eventId}/` where `{eventId}` is a numeric identifier) before initiating any external data fetch. When the URL does not conform to the expected pattern, the system SHALL reject the input with a validation error identifying the expected format.
