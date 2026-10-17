@@ -118,14 +118,15 @@ interface PocketCategoryGroup {
 
 interface PocketWaveGroup {
   waveName: string;
+  day: number | null;
   categories: PocketCategoryGroup[];
 }
 
 // Pocket printout panel geometry: a Letter sheet folded in half twice (quarter-fold)
 // unfolds into a 2x2 grid of these panels — final folded size ~4.25"x5.5". Each panel
-// holds one wave, laid out as 2 side-by-side category columns (round-robin if a wave
-// has more than 2 categories) — no per-row wave/category column needed since the panel
-// title already names the wave and each category has its own mini-header.
+// holds as many whole waves as fit stacked top to bottom, each laid out as 2 side-by-side
+// category columns — no per-row wave/category column needed since each wave's title bar
+// names it and each category has its own mini-header.
 const PANEL_W = 306;
 const PANEL_H = 396;
 const PANELS_PER_SHEET = 4; // per side; 8 total per physical (double-sided) sheet
@@ -139,6 +140,7 @@ const POCKET_COLHDR_H = 10;
 const POCKET_ATHLETE_ROW_H = 12;
 const POCKET_MIN_ATHLETE_ROW_H = 8;
 const POCKET_BOTTOM_PAD = 8;
+const POCKET_WAVE_GAP = 8; // space between two waves stacked in the same panel
 
 export class PdfExportService {
   // ─── Wave-detail schedule export (Tabloid, up to 2 waves per page) ────────
@@ -261,15 +263,29 @@ export class PdfExportService {
     const PDFDocument = (await import('pdfkit')).default;
     const brand = { ...DEFAULT_BRANDING, ...branding };
 
-    // One wave per panel — realistic wave sizes (max ~35-40 athletes across up to
-    // ~4 categories, observed in this app's actual event data) comfortably fit the
-    // 2-column category layout below; this doesn't attempt to split an oversized
-    // wave across multiple panels.
+    // Whole waves are packed into panels in race order, as many per panel as fit at full row
+    // height, so panels use their vertical space instead of leaving a small wave alone on half
+    // an empty panel. A wave is never split across panels; one too tall for a panel on its own
+    // gets a panel to itself and shrinks its rows to fit. A multi-day race (e.g. State) starts
+    // each day on its own physical sheet, so riders carry just that day's card.
     const waveGroups = this.buildPocketWaveGroups(schedule);
-    const panels: (PocketWaveGroup | null)[] = [...waveGroups];
+    const multiDay = waveGroups.some((w) => w.day != null);
+    const dayGroups: PocketWaveGroup[][] = [];
+    for (const wave of waveGroups) {
+      const last = dayGroups[dayGroups.length - 1];
+      if (last && (!multiDay || last[0].day === wave.day)) last.push(wave);
+      else dayGroups.push([wave]);
+    }
+
+    const panelsPerSheet = PANELS_PER_SHEET * 2;
+    const panels: (PocketWaveGroup[] | null)[] = [];
+    for (const group of dayGroups) {
+      panels.push(...this.packPocketPanels(group));
+      while (panels.length % panelsPerSheet !== 0) panels.push(null);
+    }
     if (panels.length === 0) panels.push(null);
-    const sheets = Math.max(1, Math.ceil(panels.length / (PANELS_PER_SHEET * 2)));
-    while (panels.length < sheets * PANELS_PER_SHEET * 2) panels.push(null);
+    const sheets = Math.max(1, Math.ceil(panels.length / panelsPerSheet));
+    while (panels.length < sheets * panelsPerSheet) panels.push(null);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
@@ -884,6 +900,7 @@ export class PdfExportService {
     let pocketColorIndex = 0;
     return schedule.waves.map((wave) => ({
       waveName: wave.waveName,
+      day: wave.day ?? null,
       categories: [...wave.categories]
         .sort((a, b) => a.startTime.localeCompare(b.startTime))
         .map((cat) => ({
@@ -906,7 +923,7 @@ export class PdfExportService {
   // ─── One physical page (front or back) of the pocket printout: 2x2 panels ─
   private renderPocketPage(
     doc: PDFKit.PDFDocument,
-    panels: (PocketWaveGroup | null)[],
+    panels: (PocketWaveGroup[] | null)[],
     brand: PdfBranding,
   ): void {
     const positions = [
@@ -914,8 +931,8 @@ export class PdfExportService {
       { x: 0, y: PANEL_H }, { x: PANEL_W, y: PANEL_H },
     ];
     for (let i = 0; i < PANELS_PER_SHEET; i++) {
-      const wave = panels[i];
-      if (wave) this.renderPocketPanel(doc, wave, positions[i].x, positions[i].y, brand);
+      const waves = panels[i];
+      if (waves) this.renderPocketPanel(doc, waves, positions[i].x, positions[i].y, brand);
     }
 
     // Fold guides at the physical quarter-fold creases
@@ -925,55 +942,82 @@ export class PdfExportService {
     doc.undash();
   }
 
-  // One wave per panel: a full-width title bar naming the wave, then up to
-  // POCKET_COLS side-by-side category columns (balanced by height if the wave has more
-  // categories than columns). Each category gets its own mini-header showing the
-  // category name and its stage/start times — no per-row wave/category column needed.
+  // Height-balanced 2-column placement of one wave's categories: each category goes into
+  // whichever column is currently shorter (in start order), which balances a wave of uneven
+  // splits far better than strict round-robin. `height` is the whole wave block — title bar
+  // included — at the given athlete row height.
+  private layoutPocketWave(wave: PocketWaveGroup, rowH: number): { cols: number[]; height: number } {
+    const heights = new Array<number>(POCKET_COLS).fill(0);
+    const cols = wave.categories.map((cat) => {
+      const col = heights.indexOf(Math.min(...heights));
+      heights[col] += POCKET_CAT_HDR_H + POCKET_COLHDR_H + cat.athletes.length * rowH + POCKET_CAT_GAP;
+      return col;
+    });
+    const colsH = wave.categories.length > 0 ? Math.max(...heights) - POCKET_CAT_GAP : 0;
+    return { cols, height: POCKET_TITLE_H + POCKET_TITLE_GAP + colsH };
+  }
+
+  // Greedy in-order packing: a wave joins the current panel when it still fits below the
+  // waves already there at full row height; otherwise it starts the next panel.
+  private packPocketPanels(waves: PocketWaveGroup[]): PocketWaveGroup[][] {
+    const availH = PANEL_H - POCKET_BOTTOM_PAD;
+    const panels: PocketWaveGroup[][] = [];
+    let current: PocketWaveGroup[] = [];
+    let usedH = 0;
+    for (const wave of waves) {
+      const h = this.layoutPocketWave(wave, POCKET_ATHLETE_ROW_H).height;
+      if (current.length > 0 && usedH + POCKET_WAVE_GAP + h > availH) {
+        panels.push(current);
+        current = [];
+        usedH = 0;
+      }
+      usedH += (current.length > 0 ? POCKET_WAVE_GAP : 0) + h;
+      current.push(wave);
+    }
+    if (current.length > 0) panels.push(current);
+    return panels;
+  }
+
+  // One panel: its waves stacked top to bottom, each with a full-width title bar naming the
+  // wave, then up to POCKET_COLS side-by-side category columns. Each category gets its own
+  // mini-header showing the category name and its stage/start times. A wave too tall for the
+  // panel on its own (packPocketPanels gives it a panel to itself) shrinks its athlete rows,
+  // to a readable floor, so it stays on its panel instead of running into the one below it.
   private renderPocketPanel(
     doc: PDFKit.PDFDocument,
-    wave: PocketWaveGroup,
+    waves: PocketWaveGroup[],
     px: number,
     py: number,
     brand: PdfBranding,
   ): void {
     const PAD = 10;
     const innerW = PANEL_W - PAD * 2;
-
-    doc.rect(px, py, PANEL_W, POCKET_TITLE_H).fill(brand.primaryColor);
-    doc.fillColor('#FFFFFF').fontSize(12).font('Helvetica-Bold');
-    this.oneLine(doc, wave.waveName, px + PAD, py + 6, innerW);
-
     const colW = (innerW - POCKET_COL_GAP * (POCKET_COLS - 1)) / POCKET_COLS;
-    const colStartY = py + POCKET_TITLE_H + POCKET_TITLE_GAP;
-    const availH = PANEL_H - POCKET_TITLE_H - POCKET_TITLE_GAP - POCKET_BOTTOM_PAD;
+    const panelBottom = py + PANEL_H - POCKET_BOTTOM_PAD;
 
-    // Each category goes into whichever column is currently shorter (in start order), which
-    // balances a wave of uneven splits far better than strict round-robin. If the taller column
-    // still overflows the panel at full size, athlete rows shrink (to a readable floor) so a big
-    // split-heavy wave stays on its own panel instead of running into the one below it.
-    const layout = (rowH: number): { cols: number[]; heights: number[] } => {
-      const heights = new Array<number>(POCKET_COLS).fill(0);
-      const cols = wave.categories.map((cat) => {
-        const col = heights.indexOf(Math.min(...heights));
-        heights[col] += POCKET_CAT_HDR_H + POCKET_COLHDR_H + cat.athletes.length * rowH + POCKET_CAT_GAP;
-        return col;
+    let y = py;
+    for (const wave of waves) {
+      let rowH = POCKET_ATHLETE_ROW_H;
+      let placement = this.layoutPocketWave(wave, rowH);
+      while (y + placement.height > panelBottom && rowH > POCKET_MIN_ATHLETE_ROW_H) {
+        rowH -= 0.5;
+        placement = this.layoutPocketWave(wave, rowH);
+      }
+
+      doc.rect(px, y, PANEL_W, POCKET_TITLE_H).fill(brand.primaryColor);
+      doc.fillColor('#FFFFFF').fontSize(12).font('Helvetica-Bold');
+      this.oneLine(doc, wave.waveName, px + PAD, y + 6, innerW);
+
+      const colYs = new Array<number>(POCKET_COLS).fill(y + POCKET_TITLE_H + POCKET_TITLE_GAP);
+      wave.categories.forEach((cat, i) => {
+        const col = placement.cols[i];
+        const cx = px + PAD + col * (colW + POCKET_COL_GAP);
+        const catColor = ROW_COLORS[cat.colorIndex % ROW_COLORS.length];
+        colYs[col] = this.renderPocketCategoryBlock(doc, cat, cx, colYs[col], colW, catColor, rowH) + POCKET_CAT_GAP;
       });
-      return { cols, heights };
-    };
-    let rowH = POCKET_ATHLETE_ROW_H;
-    let placement = layout(rowH);
-    while (Math.max(...placement.heights) - POCKET_CAT_GAP > availH && rowH > POCKET_MIN_ATHLETE_ROW_H) {
-      rowH -= 0.5;
-      placement = layout(rowH);
-    }
 
-    const colYs = new Array<number>(POCKET_COLS).fill(colStartY);
-    wave.categories.forEach((cat, i) => {
-      const col = placement.cols[i];
-      const cx = px + PAD + col * (colW + POCKET_COL_GAP);
-      const catColor = ROW_COLORS[cat.colorIndex % ROW_COLORS.length];
-      colYs[col] = this.renderPocketCategoryBlock(doc, cat, cx, colYs[col], colW, catColor, rowH) + POCKET_CAT_GAP;
-    });
+      y += placement.height + POCKET_WAVE_GAP;
+    }
   }
 
   // Single category's mini-header (name + stage/start times) and athlete rows, rendered at an

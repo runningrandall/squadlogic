@@ -119,12 +119,17 @@ describe('PdfExportService — multi-day race (State Champs)', () => {
   });
 
   describe('pocket', () => {
-    it('gives each of the 12 waves its own panel across two double-sided sheets', async () => {
+    it('puts Day 1 on one sheet and Day 2 on the other', async () => {
       const buffer = await service.generatePocketPdf(stateSchedule());
       expect(await getPdfPageCount(buffer)).toBe(4);
-      const text = await getPdfText(buffer);
-      expect(text).toContain('Day 1 Wave 1');
-      expect(text).toContain('Day 2 Wave 6');
+      const day1 = (await getPdfPageText(buffer, 1)) + (await getPdfPageText(buffer, 2));
+      const day2 = (await getPdfPageText(buffer, 3)) + (await getPdfPageText(buffer, 4));
+      for (let w = 1; w <= 6; w++) {
+        expect(day1).toContain(`Day 1 Wave ${w}`);
+        expect(day2).toContain(`Day 2 Wave ${w}`);
+      }
+      expect(day1).not.toContain('Day 2');
+      expect(day2).not.toContain('Day 1');
     });
 
     it('shrinks an oversized wave\'s rows so every rider still lands on that wave\'s panel', async () => {
