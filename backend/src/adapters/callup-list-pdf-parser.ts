@@ -114,8 +114,10 @@ export async function parseCallUpListPdf(buffer: Buffer): Promise<CallUpListImpo
     if (timeMatch) {
       const [, label, month, day, year, hour, minute, meridiem] = timeMatch;
       const time = to24Hour(Number(hour), Number(minute), meridiem);
-      if (!eventDate) eventDate = toIsoDate(Number(month), Number(day), Number(year));
+      const date = toIsoDate(Number(month), Number(day), Number(year));
+      if (!eventDate) eventDate = date;
       if (current) {
+        current.date = date;
         if (label.toUpperCase() === 'STAGING TIME') current.stageTime = time;
         else current.startTime = time;
       }
@@ -127,7 +129,7 @@ export async function parseCallUpListPdf(buffer: Buffer): Promise<CallUpListImpo
       // Anything else on its own line is a new category header. Kept verbatim (including a
       // "Split N" suffix, if present) so a category split across sections still prints as
       // distinct groups with their own stage/start times, rather than being blended into one.
-      current = { categoryName: line, stageTime: '', startTime: '', participants: [] };
+      current = { categoryName: line, date: '', stageTime: '', startTime: '', participants: [] };
       categories.push(current);
       continue;
     }

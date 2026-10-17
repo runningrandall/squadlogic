@@ -490,18 +490,27 @@ describe('PdfExportService', () => {
       expect(text).toContain('F59');
     });
 
-    it('spills the summary page onto a second page when there are too many waves to fit one page', async () => {
-      const manyWaves: TeamWaveSchedule = {
+    it('shrinks rows so 30 waves still fit the single summary page', async () => {
+      const thirtyWaves: TeamWaveSchedule = {
         ...schedule,
         waves: Array.from({ length: 30 }, (_, i) => mkWave(`Wave ${i + 1}`, `${8 + Math.floor(i / 4)}:${(i % 4) * 15}0`, 1)),
       };
+      // 1 summary page + 1 all-waves detail page.
+      expect(await getPdfPageCount(await service.generateSchedulePdf(thirtyWaves))).toBe(2);
+    });
+
+    it('spills the summary page onto a second page when there are too many waves to fit one page', async () => {
+      const manyWaves: TeamWaveSchedule = {
+        ...schedule,
+        waves: Array.from({ length: 50 }, (_, i) => mkWave(`Wave ${i + 1}`, `${8 + Math.floor(i / 4)}:${(i % 4) * 15}0`, 1)),
+      };
       const buffer = await service.generateSchedulePdf(manyWaves);
       expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
-      // 2 summary pages (30 waves at min row height don't fit one) + 1 all-waves detail page.
+      // 2 summary pages (50 waves even at the smallest row size don't fit one) + 1 all-waves detail page.
       expect(await getPdfPageCount(await service.generateSchedulePdf(manyWaves))).toBe(3);
       const text = await getPdfText(await service.generateSchedulePdf(manyWaves));
       expect(text).toContain('Wave 1');
-      expect(text).toContain('Wave 30');
+      expect(text).toContain('Wave 50');
     });
 
     it('generateSchedulePdf and the generatePdf alias produce the same page count', async () => {

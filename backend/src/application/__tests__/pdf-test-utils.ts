@@ -37,7 +37,9 @@ async function loadPdf(buffer: Buffer) {
     globalThis.pdfjsWorker = { WorkerMessageHandler: worker.WorkerMessageHandler };
   }
 
-  const data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  // Copied rather than viewed in place: pdfjs-dist transfers (detaches) the ArrayBuffer it's
+  // given, which would break any second read of the same PDF buffer in a test.
+  const data = new Uint8Array(buffer);
   return pdfjsLib.getDocument({ data, useSystemFonts: true }).promise;
 }
 

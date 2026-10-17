@@ -60,7 +60,7 @@ const headers = { 'x-user-role': 'SuperAdmin', 'x-organization-id': 'org-123' };
 const sampleParticipants = [
   { firstName: 'J', lastName: 'D', team: 'Team A', category: 'V Boys', bibNumber: '1', callUpNumber: '1' },
 ];
-const sampleCategorySchedule = { 'V Boys': { stageTime: '08:00', startTime: '08:15' } };
+const sampleCategorySchedule = { 'V Boys': { date: '2026-08-02', stageTime: '08:00', startTime: '08:15' } };
 const sampleSchedule = {
   teamName: 'Team A', eventName: 'Test Event', eventDate: '2026-08-02',
   totalAthletes: 1, waves: [],
@@ -69,7 +69,7 @@ const sampleSchedule = {
 function sampleImportResult(eventId: string) {
   return {
     metadata: {
-      eventName: 'Test Event', eventDate: '2026-08-02', eventLocation: 'Test, UT',
+      eventName: 'Test Event', eventDate: '2026-08-02', eventDates: ['2026-08-02'], eventLocation: 'Test, UT',
       eventId, sourceUrl: '', teams: ['Team A'],
     },
     participants: sampleParticipants,
@@ -233,7 +233,7 @@ describe('Race event routes', () => {
       });
       expect(res.statusCode).toBe(200);
       expect(mockScheduleService.generateSchedule).toHaveBeenCalledWith(
-        'Team A', sampleParticipants, [], sampleCategorySchedule, 'Test Event', '2026-08-02',
+        'Team A', sampleParticipants, [], sampleCategorySchedule, 'Test Event', '2026-08-02', ['2026-08-02'],
       );
     });
 
@@ -263,7 +263,7 @@ describe('Race event routes', () => {
       });
 
       expect(mockScheduleService.generateSchedule).toHaveBeenCalledWith(
-        'Team A', multiTeamImport.participants, [], sampleCategorySchedule, 'Test Event', '2026-08-02',
+        'Team A', multiTeamImport.participants, [], sampleCategorySchedule, 'Test Event', '2026-08-02', ['2026-08-02'],
       );
     });
   });
@@ -327,7 +327,7 @@ describe('Race event routes', () => {
       });
       expect(res.statusCode).toBe(200);
       expect(mockScheduleService.generateSchedule).toHaveBeenCalledWith(
-        'Team A', sampleParticipants, [], sampleCategorySchedule, 'Test Event', '2026-08-02',
+        'Team A', sampleParticipants, [], sampleCategorySchedule, 'Test Event', '2026-08-02', ['2026-08-02'],
       );
     });
 
@@ -357,7 +357,7 @@ describe('Race event routes', () => {
       });
 
       expect(mockScheduleService.generateSchedule).toHaveBeenCalledWith(
-        'Team A', multiTeamImport.participants, [], sampleCategorySchedule, 'Test Event', '2026-08-02',
+        'Team A', multiTeamImport.participants, [], sampleCategorySchedule, 'Test Event', '2026-08-02', ['2026-08-02'],
       );
     });
 

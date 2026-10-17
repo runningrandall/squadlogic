@@ -11,6 +11,7 @@ export type CallUpListUploadDto = z.output<typeof CallUpListUploadSchema>;
 export interface RaceEventMetadata {
   eventName: string;
   eventDate: string;
+  eventDates: string[]; // every distinct race day (ISO), sorted; more than one for multi-day races
   eventLocation: string;
   eventId: string;
   sourceUrl: string;
@@ -36,6 +37,9 @@ export interface WaveScheduleEntry {
 
 export interface WaveGroup {
   waveName: string;
+  waveNumber: number | null; // official wave number within its day; null for an unscheduled category
+  day: number | null; // 1-based race day; null for a single-day race
+  date: string;
   categories: WaveScheduleEntry[];
 }
 
@@ -43,6 +47,7 @@ export interface TeamWaveSchedule {
   teamName: string;
   eventName: string;
   eventDate: string;
+  eventDates: string[];
   totalAthletes: number;
   waves: WaveGroup[];
 }

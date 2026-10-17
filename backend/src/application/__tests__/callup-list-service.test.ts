@@ -59,10 +59,11 @@ describe('CallUpListService', () => {
 
       expect(result.participants).toHaveLength(3);
       expect(result.categorySchedule).toEqual({
-        'Varsity Boys': { stageTime: '10:05', startTime: '10:20' },
-        'Varsity Girls': { stageTime: '11:25', startTime: '11:40' },
+        'Varsity Boys': { date: '2025-09-20', stageTime: '10:05', startTime: '10:20' },
+        'Varsity Girls': { date: '2025-09-20', stageTime: '11:25', startTime: '11:40' },
       });
       expect(result.metadata.eventDate).toBe('2025-09-20');
+      expect(result.metadata.eventDates).toEqual(['2025-09-20']);
       expect(result.metadata.teams).toEqual(['Lehi HS', 'Skyridge HS']);
       expect(result.metadata.eventName).toBe('Race Event');
     });
@@ -95,7 +96,7 @@ describe('CallUpListService', () => {
       expect(result.participants).toHaveLength(1);
       expect(result.participants[0].team).toBe('Lehi HS');
       expect(result.categorySchedule).toEqual({
-        'Varsity Boys': { stageTime: '10:05', startTime: '10:20' },
+        'Varsity Boys': { date: '2025-09-20', stageTime: '10:05', startTime: '10:20' },
       });
     });
 
@@ -116,8 +117,8 @@ describe('CallUpListService', () => {
 
       expect(result.participants).toHaveLength(2);
       expect(result.categorySchedule).toEqual({
-        'Beginner 7th Grade Boys Split 1': { stageTime: '15:40', startTime: '15:55' },
-        'Beginner 7th Grade Boys Split 2': { stageTime: '15:45', startTime: '16:00' },
+        'Beginner 7th Grade Boys Split 1': { date: '2025-09-20', stageTime: '15:40', startTime: '15:55' },
+        'Beginner 7th Grade Boys Split 2': { date: '2025-09-20', stageTime: '15:45', startTime: '16:00' },
       });
     });
 

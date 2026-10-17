@@ -48,6 +48,20 @@ function formatLaps(laps: number | null): string {
   return laps == null ? '—' : `${laps} LAP${laps === 1 ? '' : 'S'}`;
 }
 
+// "2026-10-23" → "FRI OCT 23" for multi-day race-day band labels. Parsed as UTC so the
+// weekday never shifts with the server's local timezone.
+function formatDayLabel(isoDate: string): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).replace(',', '').toUpperCase();
+}
+
+// A multi-day race (e.g. State) prints its full date range in the page header instead of just day 1.
+function formatEventDates(schedule: TeamWaveSchedule): string {
+  const dates = schedule.eventDates ?? [];
+  return dates.length > 1 ? `${dates[0]} – ${dates[dates.length - 1]}` : schedule.eventDate;
+}
+
 // Page geometry — multiple exports use different physical page sizes, so this is
 // threaded through render methods rather than hardcoded as module constants.
 interface PageMetrics {
@@ -81,6 +95,7 @@ interface RosterRow {
 // unit that gets flowed down N side-by-side roster columns without ever being split.
 interface RosterCategoryBlock {
   categoryName: string;
+  waveName: string;
   colorIndex: number;
   laps: number | null;
   rows: RosterRow[];
@@ -122,6 +137,8 @@ const POCKET_CAT_HDR_H = 28;
 const POCKET_CAT_GAP = 6;
 const POCKET_COLHDR_H = 10;
 const POCKET_ATHLETE_ROW_H = 12;
+const POCKET_MIN_ATHLETE_ROW_H = 8;
+const POCKET_BOTTOM_PAD = 8;
 
 export class PdfExportService {
   // ─── Wave-detail schedule export (Tabloid, up to 2 waves per page) ────────
@@ -195,12 +212,13 @@ export class PdfExportService {
 
     // Grouped by category (preserving the wave/category traversal order from the schedule),
     // athletes sorted by first name within each category — the category header band carries
-    // the category name, so no per-row category column is needed.
-    let rosterColorIndex = 0;
-    const blocks: RosterCategoryBlock[] = schedule.waves.flatMap((wave) =>
+    // the category name and its wave, so no per-row category column is needed. Colored per
+    // wave (not per category) so one wave's splits read as a group, matching the detail page.
+    const blocks: RosterCategoryBlock[] = schedule.waves.flatMap((wave, waveIndex) =>
       wave.categories.map((cat) => ({
         categoryName: cat.categoryName,
-        colorIndex: rosterColorIndex++,
+        waveName: wave.waveName,
+        colorIndex: waveIndex,
         laps: cat.laps,
         rows: [...cat.athletes]
           .sort((x, y) => x.firstName.localeCompare(y.firstName) || x.lastName.localeCompare(y.lastName))
@@ -315,7 +333,7 @@ export class PdfExportService {
     this.oneLine(doc, displayName, textX, 10, textW);
 
     doc.fontSize(8).font('Helvetica');
-    const subtitle = [schedule.eventName, schedule.eventDate, eventLocation]
+    const subtitle = [schedule.eventName, formatEventDates(schedule), eventLocation]
       .filter(Boolean).join('  •  ');
     this.oneLine(doc, subtitle, textX, 34, textW);
 
@@ -413,38 +431,85 @@ export class PdfExportService {
 
     // Data rows — height grows to fit however many lines the category list wraps to. When
     // the whole table fits on this page, rows also stretch to fill the remaining space so the
-    // table fills the page like the reference layout; when it doesn't fit, rows stay at their
-    // content-driven height and the table spills onto additional pages instead of silently
-    // overflowing past the page boundary.
-    // One consistent font size across the wave/category/time columns — previously the wave
-    // column used a visibly smaller size than its neighbors for no functional reason.
-    const WAVE_FONT_SIZE = 16;
-    const CAT_FONT_SIZE = 16;
-    const TIME_FONT_SIZE = 16;
-    const ROW_V_PAD = 20;
-    const ROW_MIN_H = 50;
+    // table fills the page like the reference layout. When it doesn't fit at full size, the
+    // font/padding steps down (to a readable floor) until it does — a 12-wave, two-day State
+    // schedule should still be one page — and only past that floor does the table spill onto
+    // additional pages instead of silently overflowing past the page boundary.
+    // A multi-day race also gets a full-width band row ahead of each day's waves, since wave
+    // numbers restart every day.
+    const multiDay = schedule.waves.some((w) => w.day != null);
+    type SummaryItem = { kind: 'day'; day: number; date: string } | { kind: 'wave'; wave: WaveGroup };
+    const items: SummaryItem[] = [];
+    for (const wave of schedule.waves) {
+      const prev = items.length > 0 ? items[items.length - 1] : null;
+      const prevDay = prev?.kind === 'wave' ? prev.wave.day : prev?.kind === 'day' ? prev.day : null;
+      if (multiDay && wave.day != null && wave.day !== prevDay) {
+        items.push({ kind: 'day', day: wave.day, date: wave.date });
+      }
+      items.push({ kind: 'wave', wave });
+    }
 
-    const contentRowH = (wave: WaveGroup): number => {
-      const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
-      doc.font('Helvetica-Bold').fontSize(CAT_FONT_SIZE);
-      const categoryH = doc.heightOfString(categoryList, { width: cols[1] - 8 });
-      return Math.max(ROW_MIN_H, categoryH + ROW_V_PAD);
-    };
-
-    const totalContentH = schedule.waves.reduce((s, w) => s + contentRowH(w), 0);
     const singlePageAvail = Math.max(0, footerY - doc.y);
-    const singlePageFits = totalContentH <= singlePageAvail;
-    // Floored rather than exact division: an exact split lands the last row's bottom edge
-    // precisely on footerY, and floating-point rounding can occasionally push it a hair over,
-    // triggering an unwanted page break for the last wave.
-    const stretchRowH = singlePageFits && schedule.waves.length > 0
-      ? Math.floor(singlePageAvail / schedule.waves.length)
-      : 0;
+    const sizing = (scale: number) => ({
+      fontSize: Math.round(16 * scale),
+      rowVPad: Math.round(20 * scale),
+      rowMinH: Math.round(50 * scale),
+      dayBandH: Math.round(30 * scale),
+    });
+    const contentRowHAt = (wave: WaveGroup, sz: ReturnType<typeof sizing>): number => {
+      const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
+      doc.font('Helvetica-Bold').fontSize(sz.fontSize);
+      const categoryH = doc.heightOfString(categoryList, { width: cols[1] - 8 });
+      return Math.max(sz.rowMinH, categoryH + sz.rowVPad);
+    };
+    const totalHAt = (sz: ReturnType<typeof sizing>): number =>
+      items.reduce((sum, it) => sum + (it.kind === 'day' ? sz.dayBandH : contentRowHAt(it.wave, sz)), 0);
+
+    const MIN_SCALE = 0.6;
+    let scale = 1;
+    while (scale > MIN_SCALE && totalHAt(sizing(scale)) > singlePageAvail) {
+      scale = Math.round((scale - 0.05) * 100) / 100;
+    }
+    const sz = sizing(scale);
+    const CAT_FONT_SIZE = sz.fontSize;
+    const contentRowH = (wave: WaveGroup): number => contentRowHAt(wave, sz);
+
+    // Leftover page height is shared out evenly as extra height on top of each row's own content
+    // height (rather than forcing every row to one even share, which overflows the page as soon as
+    // one wave's category list wraps taller than that share). Floored: an exact split lands the
+    // last row's bottom edge precisely on footerY, and floating-point rounding can occasionally
+    // push it a hair over, triggering an unwanted page break for the last wave.
+    const waveCount = schedule.waves.length;
+    const slack = singlePageAvail - totalHAt(sz);
+    const rowStretch = slack > 0 && waveCount > 0 ? Math.floor(slack / waveCount) : 0;
+
+    const itemH = (it: SummaryItem): number => (it.kind === 'day' ? sz.dayBandH : contentRowH(it.wave));
+    const newPage = (): void => {
+      doc.addPage();
+      doc.transform(0, 1, -1, 0, TABLOID_LANDSCAPE.PW, 0);
+      this.renderPageHeader(pm, doc, schedule, brand, logoBuffer, eventLocation);
+      drawColumnHeaderRow();
+    };
 
     const sepX = pm.L + cols[0] + cols[1];
     let colorIdx = 0;
-    for (let waveIdx = 0; waveIdx < schedule.waves.length; waveIdx++) {
-      const wave = schedule.waves[waveIdx];
+    for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+      const item = items[itemIdx];
+
+      if (item.kind === 'day') {
+        // Keep a day band with at least its first wave row — never strand it at a page bottom.
+        const next = items[itemIdx + 1];
+        if (doc.y + sz.dayBandH + (next ? itemH(next) : 0) > footerY) newPage();
+        const bandY = doc.y;
+        doc.rect(pm.L, bandY, tableW, sz.dayBandH).fill(brand.primaryColor);
+        doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(sz.fontSize);
+        const label = [`DAY ${item.day}`, formatDayLabel(item.date)].filter(Boolean).join('  ·  ');
+        this.oneLine(doc, label, pm.L + WAVE_COL_PAD, bandY + (sz.dayBandH - sz.fontSize) / 2, tableW - WAVE_COL_PAD * 2);
+        doc.y = bandY + sz.dayBandH;
+        continue;
+      }
+
+      const wave = item.wave;
       const firstCat = wave.categories[0];
       const logistics = firstCat?.athletes[0]?.logistics;
       const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
@@ -452,18 +517,12 @@ export class PdfExportService {
 
       doc.font('Helvetica-Bold').fontSize(CAT_FONT_SIZE);
       const categoryH = doc.heightOfString(categoryList, { width: cols[1] - 8 });
-      const ROW_H = Math.max(ROW_MIN_H, categoryH + ROW_V_PAD, stretchRowH);
+      const ROW_H = Math.max(sz.rowMinH, categoryH + sz.rowVPad) + rowStretch;
 
-      if (doc.y + ROW_H > footerY) {
-        doc.addPage();
-        doc.transform(0, 1, -1, 0, TABLOID_LANDSCAPE.PW, 0);
-        this.renderPageHeader(pm, doc, schedule, brand, logoBuffer, eventLocation);
-        drawColumnHeaderRow();
-      }
+      if (doc.y + ROW_H > footerY) newPage();
 
       const rowY = doc.y;
       const rowColor = ROW_COLORS[colorIdx % ROW_COLORS.length];
-      const waveNumber = colorIdx + 1;
       colorIdx++;
 
       doc.rect(pm.L, rowY, tableW, ROW_H).fill(rowColor);
@@ -471,22 +530,28 @@ export class PdfExportService {
       // Column accent borders: each timing column (everything right of CATEGORY) gets a solid
       // bar of its own header color along its left and right edges, so the row's base color
       // stays clean and legible while each column still visibly ties back to its header. The
-      // last row on the page (found by checking whether a next wave exists and would still fit
-      // on this page, not a hardcoded row count) also gets a matching bottom bar so the accent
-      // box actually closes instead of trailing off.
-      const nextWave = schedule.waves[waveIdx + 1];
-      const isLastRowOnPage = !nextWave || (rowY + ROW_H + contentRowH(nextWave) > footerY);
+      // last row before a page break or a day band (found by checking whether the next item
+      // exists, is a wave, and would still fit on this page, not a hardcoded row count) also
+      // gets a matching bottom bar so the accent box actually closes instead of trailing off.
+      const next = items[itemIdx + 1];
+      const isLastRowInBlock = !next || next.kind === 'day' || (rowY + ROW_H + contentRowH(next.wave) + rowStretch > footerY);
       for (let i = 2; i < cols.length; i++) {
         doc.rect(colX[i], rowY, BORDER_W, ROW_H).fill(hdrColors[i]);
         doc.rect(colX[i] + cols[i] - BORDER_W, rowY, BORDER_W, ROW_H).fill(hdrColors[i]);
-        if (isLastRowOnPage) {
+        if (isLastRowInBlock) {
           doc.rect(colX[i], rowY + ROW_H - BORDER_W, cols[i], BORDER_W).fill(hdrColors[i]);
         }
       }
       doc.fillColor('#000000');
 
+      // WAVE shows the official wave number (it can skip numbers when this team has no riders
+      // in an official wave); an unscheduled category's standalone wave shows a dash. A schedule
+      // built before wave numbers existed (no waveNumber field at all) falls back to row order.
+      const waveLabel = wave.waveNumber === undefined
+        ? String(colorIdx)
+        : wave.waveNumber === null ? '—' : String(wave.waveNumber);
       const rowVals = [
-        String(waveNumber),
+        waveLabel,
         categoryList,
         logistics?.waveMeetingTime ? formatTime12Hour(logistics.waveMeetingTime) : '—',
         logistics?.warmupStart ? formatTime12Hour(logistics.warmupStart) : '—',
@@ -501,7 +566,7 @@ export class PdfExportService {
         // Only the category column (i=1) may wrap (ROW_H above is sized to fit it);
         // every other column is forced to a single truncated line.
         const allowWrap = i === 1;
-        const fontSize = allowWrap ? CAT_FONT_SIZE : i === 0 ? WAVE_FONT_SIZE : TIME_FONT_SIZE;
+        const fontSize = sz.fontSize;
         const leftPad = i === 0 ? WAVE_COL_PAD : 4;
         doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
         const ty = rowY + (allowWrap ? (ROW_H - categoryH) / 2 : (ROW_H - fontSize) / 2);
@@ -554,7 +619,9 @@ export class PdfExportService {
     const availH = pm.PH - 20 - tableTop;
     if (blocks.length === 0) return;
 
-    const MAX_COLS = 3;
+    // Column count steps up (3 → 4) only when even the smallest row height can't fit every
+    // category in fewer columns — e.g. a two-day State race with a dozen waves of splits.
+    const COL_OPTIONS = [3, 4];
     const MIN_ROW_H = 8;
     const MAX_ROW_H = 15;
     const GAP = 16;
@@ -584,17 +651,7 @@ export class PdfExportService {
       return cols;
     };
 
-    let rowH = MAX_ROW_H;
-    let columns = packColumns(rowH);
-    while (columns.length > MAX_COLS && rowH > MIN_ROW_H) {
-      rowH -= 1;
-      columns = packColumns(rowH);
-    }
-    // Extreme case (more categories than even MIN_ROW_H/MAX_COLS can hold): merge any excess
-    // columns into the last one rather than losing categories off the rendered page entirely.
-    if (columns.length > MAX_COLS) {
-      columns = [...columns.slice(0, MAX_COLS - 1), columns.slice(MAX_COLS - 1).flat()];
-    }
+    const { rowH, columns } = this.fitColumns(packColumns, COL_OPTIONS, MIN_ROW_H, MAX_ROW_H);
 
     const fontSize = Math.max(6, Math.min(9, rowH - 2));
     const colCount = Math.max(1, columns.length);
@@ -683,7 +740,9 @@ export class PdfExportService {
     const availH = pm.PH - 20 - tableTop;
     if (totalRows === 0 || blocks.length === 0) return;
 
-    const MAX_COLS = 4;
+    // Column count steps up (4 → 5 → 6) only once the smallest row height still can't fit every
+    // category in fewer columns, so the roster stays on one page however many waves there are.
+    const COL_OPTIONS = [4, 5, 6];
     const MIN_ROW_H = 8;
     const MAX_ROW_H = 16;
     const GAP = 16;
@@ -718,18 +777,8 @@ export class PdfExportService {
     };
 
     // Start at the most readable row height and shrink only as far as needed to make the
-    // packing fit within MAX_COLS columns — larger fields naturally need a smaller font.
-    let rowH = MAX_ROW_H;
-    let columns = packColumns(rowH);
-    while (columns.length > MAX_COLS && rowH > MIN_ROW_H) {
-      rowH -= 1;
-      columns = packColumns(rowH);
-    }
-    // Extreme case (more categories than even MIN_ROW_H/MAX_COLS can hold): merge any excess
-    // columns into the last one rather than losing categories off the rendered page entirely.
-    if (columns.length > MAX_COLS) {
-      columns = [...columns.slice(0, MAX_COLS - 1), columns.slice(MAX_COLS - 1).flat()];
-    }
+    // packing fit — larger fields naturally need a smaller font.
+    const { rowH, columns } = this.fitColumns(packColumns, COL_OPTIONS, MIN_ROW_H, MAX_ROW_H);
 
     const fontSize = Math.max(6, Math.min(9, rowH - 3));
     const colCount = Math.max(1, columns.length);
@@ -790,7 +839,7 @@ export class PdfExportService {
         doc.fillColor('#333333').fontSize(catTimeFontSize).font('Helvetica');
         this.oneLine(
           doc,
-          `MTG ${fmt(first.waveMeetingTime)}   •   STAGE ${fmt(first.stagingTime)}   •   START ${fmt(first.raceStart)}   •   ${formatLaps(block.laps)}`,
+          `${block.waveName.toUpperCase()}   •   MTG ${fmt(first.waveMeetingTime)}   •   STAGE ${fmt(first.stagingTime)}   •   START ${fmt(first.raceStart)}   •   ${formatLaps(block.laps)}`,
           colX + 4, y + CAT_HDR_H - catTimeFontSize - 4, colW - 8,
         );
         y += CAT_HDR_H;
@@ -877,7 +926,7 @@ export class PdfExportService {
   }
 
   // One wave per panel: a full-width title bar naming the wave, then up to
-  // POCKET_COLS side-by-side category columns (round-robin if the wave has more
+  // POCKET_COLS side-by-side category columns (balanced by height if the wave has more
   // categories than columns). Each category gets its own mini-header showing the
   // category name and its stage/start times — no per-row wave/category column needed.
   private renderPocketPanel(
@@ -896,13 +945,34 @@ export class PdfExportService {
 
     const colW = (innerW - POCKET_COL_GAP * (POCKET_COLS - 1)) / POCKET_COLS;
     const colStartY = py + POCKET_TITLE_H + POCKET_TITLE_GAP;
-    const colYs = new Array(POCKET_COLS).fill(colStartY);
+    const availH = PANEL_H - POCKET_TITLE_H - POCKET_TITLE_GAP - POCKET_BOTTOM_PAD;
 
+    // Each category goes into whichever column is currently shorter (in start order), which
+    // balances a wave of uneven splits far better than strict round-robin. If the taller column
+    // still overflows the panel at full size, athlete rows shrink (to a readable floor) so a big
+    // split-heavy wave stays on its own panel instead of running into the one below it.
+    const layout = (rowH: number): { cols: number[]; heights: number[] } => {
+      const heights = new Array<number>(POCKET_COLS).fill(0);
+      const cols = wave.categories.map((cat) => {
+        const col = heights.indexOf(Math.min(...heights));
+        heights[col] += POCKET_CAT_HDR_H + POCKET_COLHDR_H + cat.athletes.length * rowH + POCKET_CAT_GAP;
+        return col;
+      });
+      return { cols, heights };
+    };
+    let rowH = POCKET_ATHLETE_ROW_H;
+    let placement = layout(rowH);
+    while (Math.max(...placement.heights) - POCKET_CAT_GAP > availH && rowH > POCKET_MIN_ATHLETE_ROW_H) {
+      rowH -= 0.5;
+      placement = layout(rowH);
+    }
+
+    const colYs = new Array<number>(POCKET_COLS).fill(colStartY);
     wave.categories.forEach((cat, i) => {
-      const col = i % POCKET_COLS;
+      const col = placement.cols[i];
       const cx = px + PAD + col * (colW + POCKET_COL_GAP);
       const catColor = ROW_COLORS[cat.colorIndex % ROW_COLORS.length];
-      colYs[col] = this.renderPocketCategoryBlock(doc, cat, cx, colYs[col], colW, catColor) + POCKET_CAT_GAP;
+      colYs[col] = this.renderPocketCategoryBlock(doc, cat, cx, colYs[col], colW, catColor, rowH) + POCKET_CAT_GAP;
     });
   }
 
@@ -918,6 +988,7 @@ export class PdfExportService {
     startY: number,
     colW: number,
     catColor: string,
+    rowH: number = POCKET_ATHLETE_ROW_H,
   ): number {
     let y = startY;
 
@@ -965,16 +1036,46 @@ export class PdfExportService {
     for (let r = 0; r < cat.athletes.length; r++) {
       const athlete = cat.athletes[r];
       const stripe = r % 2 === 1;
-      doc.rect(cx, y, colW, POCKET_ATHLETE_ROW_H).fill(tint(catColor, stripe ? 0.3 : 0.75));
-      doc.fillColor('#000000').font('Helvetica').fontSize(8.5);
-      const ty = y + (POCKET_ATHLETE_ROW_H - 8.5) / 2;
+      const fontSize = Math.min(8.5, rowH - 2);
+      doc.rect(cx, y, colW, rowH).fill(tint(catColor, stripe ? 0.3 : 0.75));
+      doc.fillColor('#000000').font('Helvetica').fontSize(fontSize);
+      const ty = y + (rowH - fontSize) / 2;
       this.oneLine(doc, athlete.name, cx + 2, ty, nameW - 2);
       this.oneLine(doc, athlete.callUpNumber, cx + nameW, ty, posW, 'center');
       this.oneLine(doc, athlete.bibNumber, cx + nameW + posW, ty, bibW - 2, 'right');
-      y += POCKET_ATHLETE_ROW_H;
+      y += rowH;
     }
 
     return y;
+  }
+
+  // Shared shrink-then-widen fitter for the column-packed pages: for each allowed column count
+  // (fewest first), start at the most readable row height and shrink only as far as needed.
+  // Extreme case (more categories than even MIN_ROW_H at the widest option can hold): merge any
+  // excess columns into the last one rather than losing categories off the rendered page.
+  private fitColumns<T>(
+    packColumns: (rowH: number) => T[][],
+    colOptions: number[],
+    minRowH: number,
+    maxRowH: number,
+  ): { rowH: number; columns: T[][] } {
+    let rowH = maxRowH;
+    let columns = packColumns(rowH);
+    let maxCols = colOptions[0];
+    for (const option of colOptions) {
+      maxCols = option;
+      rowH = maxRowH;
+      columns = packColumns(rowH);
+      while (columns.length > maxCols && rowH > minRowH) {
+        rowH -= 1;
+        columns = packColumns(rowH);
+      }
+      if (columns.length <= maxCols) break;
+    }
+    if (columns.length > maxCols) {
+      columns = [...columns.slice(0, maxCols - 1), columns.slice(maxCols - 1).flat()];
+    }
+    return { rowH, columns };
   }
 
   // PDFKit's `lineBreak: false` does NOT suppress word-wrapping once a `width` is

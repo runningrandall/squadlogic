@@ -4,6 +4,7 @@ import { TIME_LINE_REGEX, to24Hour, toIsoDate, toTitleCase } from './callup-list
 
 export interface CallUpCategorySchedule {
   categoryName: string;
+  date: string; // ISO yyyy-mm-dd, from the category's STAGING/START TIME line
   stageTime: string;
   startTime: string;
   participants: RaceParticipant[];
@@ -50,8 +51,10 @@ export async function parseCallUpList(buffer: Buffer): Promise<CallUpListImportR
     if (timeMatch) {
       const [, label, month, day, year, hour, minute, meridiem] = timeMatch;
       const time = to24Hour(Number(hour), Number(minute), meridiem);
-      if (!eventDate) eventDate = toIsoDate(Number(month), Number(day), Number(year));
+      const date = toIsoDate(Number(month), Number(day), Number(year));
+      if (!eventDate) eventDate = date;
       if (current) {
+        current.date = date;
         if (label.toUpperCase() === 'STAGING TIME') current.stageTime = time;
         else current.startTime = time;
       }
@@ -64,7 +67,7 @@ export async function parseCallUpList(buffer: Buffer): Promise<CallUpListImportR
     if (!isDataRow) {
       // Category header row — skip the literal "STAGING / CALLUP / PLATE / ..." table header row.
       if (colA && colA.toUpperCase() !== 'STAGING') {
-        current = { categoryName: colA, stageTime: '', startTime: '', participants: [] };
+        current = { categoryName: colA, date: '', stageTime: '', startTime: '', participants: [] };
         categories.push(current);
       }
       return;

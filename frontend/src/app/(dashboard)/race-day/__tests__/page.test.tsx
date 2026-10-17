@@ -114,6 +114,45 @@ describe('RaceDayPage', () => {
     );
   });
 
+  it('shows the full date range for a multi-day race on both the team and schedule steps', async () => {
+    mockApi.post.mockResolvedValueOnce({
+      eventId: 'evt-state',
+      eventName: 'State Champs',
+      eventDate: '2026-10-23',
+      eventDates: ['2026-10-23', '2026-10-24'],
+      eventLocation: 'Richfield, UT',
+      teams: ['Lone Peak HS'],
+      participantCount: 900,
+    });
+    mockApi.get.mockResolvedValueOnce({ teams: [{ name: 'Lone Peak HS', count: 98 }] });
+
+    const { container } = render(<RaceDayPage />);
+    await chooseFile(container);
+    fireEvent.click(screen.getByRole('button', { name: /^Import$/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/2026-10-23 – 2026-10-24/)).toBeInTheDocument();
+    });
+
+    mockApi.post.mockResolvedValueOnce({
+      teamName: 'Lone Peak HS',
+      eventName: 'State Champs',
+      eventDate: '2026-10-23',
+      eventDates: ['2026-10-23', '2026-10-24'],
+      totalAthletes: 0,
+      waves: [
+        { waveName: 'Day 2 Wave 6', waveNumber: 6, day: 2, date: '2026-10-24', categories: [] },
+      ],
+    });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Lone Peak HS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Schedule' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Day 2 Wave 6')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/State Champs — 2026-10-23 – 2026-10-24/)).toBeInTheDocument();
+  });
+
   it('shows error message on import failure', async () => {
     mockApi.post.mockRejectedValueOnce(new Error('Network error'));
 

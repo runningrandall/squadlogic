@@ -5,11 +5,7 @@ import { parseCallUpList } from '../adapters/callup-list-parser.js';
 import { parseCallUpListPdf } from '../adapters/callup-list-pdf-parser.js';
 import { detectCallUpListFormat } from '../adapters/callup-list-format.js';
 import { ValidationError } from '../lib/errors.js';
-
-export interface CategorySchedule {
-  stageTime: string;
-  startTime: string;
-}
+import type { CategorySchedule } from './wave-schedule-service.js';
 
 export interface CallUpListImportResult {
   metadata: RaceEventMetadata;
@@ -35,6 +31,7 @@ export class CallUpListService {
 
     for (const category of parsed.categories) {
       categorySchedule[category.categoryName] = {
+        date: category.date,
         stageTime: category.stageTime,
         startTime: category.startTime,
       };
@@ -45,10 +42,13 @@ export class CallUpListService {
       a.localeCompare(b, undefined, { sensitivity: 'base' }),
     );
 
+    const eventDates = [...new Set(parsed.categories.map((c) => c.date).filter(Boolean))].sort();
+
     const eventId = randomUUID();
     const metadata: RaceEventMetadata = {
       eventName: overrides?.eventName ?? 'Race Event',
-      eventDate: parsed.eventDate,
+      eventDate: eventDates[0] ?? parsed.eventDate,
+      eventDates,
       eventLocation: overrides?.eventLocation ?? '',
       eventId,
       sourceUrl: '',

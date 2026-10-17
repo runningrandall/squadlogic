@@ -109,6 +109,7 @@ export default async function raceEventRoutes(
         eventId,
         eventName: result.metadata.eventName,
         eventDate: result.metadata.eventDate,
+        eventDates: result.metadata.eventDates,
         eventLocation: result.metadata.eventLocation,
         teams: result.metadata.teams,
         participantCount: result.participants.length,
@@ -173,6 +174,7 @@ export default async function raceEventRoutes(
         cached.categorySchedule,
         cached.metadata.eventName,
         cached.metadata.eventDate,
+        cached.metadata.eventDates,
       );
 
       const enriched = services.logistics.enrichSchedule(schedule);
@@ -210,7 +212,7 @@ export default async function raceEventRoutes(
         const waveConfig = await services.waveConfig.getConfig();
         const schedule = services.schedule.generateSchedule(
           body.teamName, cached.participants, waveConfig, cached.categorySchedule,
-          cached.metadata.eventName, cached.metadata.eventDate,
+          cached.metadata.eventName, cached.metadata.eventDate, cached.metadata.eventDates,
         );
         enriched = services.logistics.enrichSchedule(schedule);
       }

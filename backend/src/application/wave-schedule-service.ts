@@ -7,8 +7,10 @@ import type {
 } from '../domain/race-event.js';
 import type { WaveConfig } from '../domain/wave-config.js';
 import { stripCategorySplitSuffix } from '../lib/category-split.js';
+import { assignWaves, type WaveAssignment } from '../lib/wave-grouping.js';
 
 export interface CategorySchedule {
+  date: string; // ISO yyyy-mm-dd race day (multi-day races like State span more than one)
   stageTime: string;
   startTime: string;
 }
@@ -30,6 +32,7 @@ export class WaveScheduleService {
     categorySchedule: Record<string, CategorySchedule>,
     eventName: string,
     eventDate: string,
+    eventDates: string[] = eventDate ? [eventDate] : [],
   ): TeamWaveSchedule {
     // Filter to selected team
     const teamParticipants = participants.filter(
@@ -41,6 +44,7 @@ export class WaveScheduleService {
         teamName,
         eventName,
         eventDate,
+        eventDates,
         totalAthletes: 0,
         waves: [],
       };
@@ -58,15 +62,18 @@ export class WaveScheduleService {
       categoryFieldSize.set(base, (categoryFieldSize.get(base) ?? 0) + 1);
     }
 
-    // WaveConfig now only supplies which named wave a category belongs to, and its lap count.
-    // Per-category stage/start times come from categorySchedule (the uploaded call-up list).
-    const groupMap = this.buildCategoryGroupMap(waveConfig);
+    // Waves come straight from the official call-up list: categories that stage/start within a
+    // few minutes of each other form one wave, numbered per race day. Assigned from the whole
+    // race's schedule (not just this team's categories) so wave numbers match the official race —
+    // a team with no riders in an official wave simply skips that number. WaveConfig now only
+    // supplies each category's lap count.
+    const waveAssignments = assignWaves(categorySchedule);
+    const lapsMap = this.buildCategoryLapsMap(waveConfig);
 
-    // Group athletes by wave, then category. A category with no WaveConfig grouping entry
-    // becomes its own standalone wave (named after the category) rather than a catch-all
-    // "Unassigned" bucket — so nothing silently disappears when WaveConfig hasn't been
-    // updated to match this week's category names.
-    const waveGroups = new Map<string, Map<string, ScheduleAthlete[]>>();
+    // Group athletes by wave, then category. A category with no stage/start time on the call-up
+    // list can't be placed in a wave, so it becomes its own standalone wave (named after the
+    // category) rather than silently disappearing.
+    const waveGroups = new Map<string, { assignment: WaveAssignment | null; categories: Map<string, ScheduleAthlete[]> }>();
 
     for (const p of teamParticipants) {
       const athlete: ScheduleAthlete = {
@@ -77,34 +84,26 @@ export class WaveScheduleService {
         calledUp: false, // set below once each category's field size is known
       };
 
-      // A split section's category name ("... Split 1") won't itself appear in WaveConfig,
-      // which only knows the base category — fall back to that to still find the right wave.
-      const waveEntry = groupMap.get(p.category) ?? groupMap.get(stripCategorySplitSuffix(p.category));
-      const waveName = waveEntry?.waveName ?? p.category;
+      const assignment = waveAssignments.get(p.category) ?? null;
+      const waveName = assignment?.waveName ?? p.category;
       if (!waveGroups.has(waveName)) {
-        waveGroups.set(waveName, new Map());
+        waveGroups.set(waveName, { assignment, categories: new Map() });
       }
-      const categories = waveGroups.get(waveName)!;
+      const categories = waveGroups.get(waveName)!.categories;
       if (!categories.has(p.category)) {
         categories.set(p.category, []);
       }
       categories.get(p.category)!.push(athlete);
     }
 
-    // Build wave groups, sorted by each wave's earliest category start time
-    const waveEntries: { waveName: string; categories: WaveScheduleEntry[]; earliestStart: string }[] = [];
+    const waves: WaveGroup[] = [];
 
-    for (const [waveName, categoriesMap] of waveGroups) {
+    for (const [waveName, { assignment, categories: categoriesMap }] of waveGroups) {
       const categories: WaveScheduleEntry[] = [];
 
-      // Sort categories alphabetically within wave
-      const sortedCategories = [...categoriesMap.entries()].sort(([a], [b]) =>
-        a.localeCompare(b),
-      );
-
-      for (const [categoryName, athletes] of sortedCategories) {
+      for (const [categoryName, athletes] of categoriesMap) {
         const sched = categorySchedule[categoryName];
-        const laps = (groupMap.get(categoryName) ?? groupMap.get(stripCategorySplitSuffix(categoryName)))?.laps ?? null;
+        const laps = lapsMap.get(categoryName) ?? lapsMap.get(stripCategorySplitSuffix(categoryName)) ?? null;
 
         // Sort athletes by lastName, then firstName
         athletes.sort((a, b) => {
@@ -132,50 +131,44 @@ export class WaveScheduleService {
         });
       }
 
-      const earliestStart = categories.reduce(
-        (min, c) => (c.startTime && (min === '' || c.startTime < min) ? c.startTime : min),
-        '',
-      );
-      waveEntries.push({ waveName, categories, earliestStart });
+      // Within a wave, categories go off in start order (a split's sections stay in sequence).
+      categories.sort((a, b) => a.startTime.localeCompare(b.startTime) || a.categoryName.localeCompare(b.categoryName));
+
+      waves.push({
+        waveName,
+        waveNumber: assignment?.waveNumber ?? null,
+        day: assignment?.day ?? null,
+        date: assignment?.date ?? '',
+        categories,
+      });
     }
 
-    // Waves with a known start time sort first (earliest first); waves with no known
-    // start time (category missing from the uploaded schedule) sort last.
-    waveEntries.sort((a, b) => {
-      if (!a.earliestStart && !b.earliestStart) return 0;
-      if (!a.earliestStart) return 1;
-      if (!b.earliestStart) return -1;
-      return a.earliestStart.localeCompare(b.earliestStart);
+    // Race order: by day, then official wave number. Waves with no known start time (category
+    // missing times on the call-up list) sort last, alphabetically.
+    waves.sort((a, b) => {
+      if (a.waveNumber === null && b.waveNumber === null) return a.waveName.localeCompare(b.waveName);
+      if (a.waveNumber === null) return 1;
+      if (b.waveNumber === null) return -1;
+      return a.date.localeCompare(b.date) || a.waveNumber - b.waveNumber;
     });
-
-    const waves: WaveGroup[] = waveEntries.map(({ waveName, categories }) => ({
-      waveName,
-      categories,
-    }));
 
     return {
       teamName,
       eventName,
       eventDate,
+      eventDates,
       totalAthletes: teamParticipants.length,
       waves,
     };
   }
 
-  private buildCategoryGroupMap(
-    waveConfig: WaveConfig[],
-  ): Map<string, { waveName: string; laps: number | null }> {
-    const map = new Map<string, { waveName: string; laps: number | null }>();
-
+  private buildCategoryLapsMap(waveConfig: WaveConfig[]): Map<string, number | null> {
+    const map = new Map<string, number | null>();
     for (const wave of waveConfig) {
       for (const entry of wave.entries) {
-        map.set(entry.categoryName, {
-          waveName: wave.waveName,
-          laps: entry.laps ?? null,
-        });
+        map.set(entry.categoryName, entry.laps ?? null);
       }
     }
-
     return map;
   }
 }

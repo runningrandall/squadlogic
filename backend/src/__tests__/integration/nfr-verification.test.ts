@@ -82,8 +82,8 @@ describe('NFR Verification', () => {
 
       const result = await service.importCallUpList(buffer);
 
-      expect(result.categorySchedule['Advanced Boys']).toEqual({ stageTime: '07:45', startTime: '08:00' });
-      expect(result.categorySchedule['Varsity Boys']).toEqual({ stageTime: '10:05', startTime: '10:20' });
+      expect(result.categorySchedule['Advanced Boys']).toEqual({ date: '2025-09-20', stageTime: '07:45', startTime: '08:00' });
+      expect(result.categorySchedule['Varsity Boys']).toEqual({ date: '2025-09-20', stageTime: '10:05', startTime: '10:20' });
       expect(result.metadata.eventDate).toBe('2025-09-20');
     });
   });

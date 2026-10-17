@@ -6,11 +6,12 @@ import type { WaveConfig } from '../../domain/wave-config.js';
 
 const service = new WaveScheduleService();
 
-// WaveConfig now only supplies wave grouping + laps — stageTime/startTime here are unused
-// by WaveScheduleService (kept only because the WaveConfigEntry schema still requires them).
+// WaveConfig now only supplies laps — its waveName grouping and stageTime/startTime are unused
+// by WaveScheduleService (waves come from the call-up list's own times). The waveNames here
+// deliberately don't match the official numbering, to prove they're ignored.
 const waveConfig: WaveConfig[] = [
   {
-    configId: 'w1', organizationId: 'GLOBAL', waveName: 'Wave 1 - HS',
+    configId: 'w1', organizationId: 'GLOBAL', waveName: 'Wave 1',
     entries: [
       { categoryName: 'JV B Boys', stageTime: '07:40', startTime: '08:00', laps: 2 },
       { categoryName: 'JV C Boys', stageTime: '07:45', startTime: '08:05', laps: 2 },
@@ -18,7 +19,7 @@ const waveConfig: WaveConfig[] = [
     createdAt: '', updatedAt: '',
   },
   {
-    configId: 'w3', organizationId: 'GLOBAL', waveName: 'Wave 3 - HS',
+    configId: 'w3', organizationId: 'GLOBAL', waveName: 'Wave 3',
     entries: [
       { categoryName: 'Varsity Boys', stageTime: '09:50', startTime: '10:10', laps: 4 },
       { categoryName: 'Varsity Girls', stageTime: '09:55', startTime: '10:15', laps: 3 },
@@ -36,11 +37,11 @@ const waveConfig: WaveConfig[] = [
 
 // Real stage/start times now come from the uploaded call-up list, not WaveConfig.
 const categorySchedule: Record<string, CategorySchedule> = {
-  'JV B Boys': { stageTime: '07:40', startTime: '08:00' },
-  'JV C Boys': { stageTime: '07:45', startTime: '08:05' },
-  'JV A Boys': { stageTime: '08:35', startTime: '08:55' },
-  'Varsity Boys': { stageTime: '09:50', startTime: '10:10' },
-  'Varsity Girls': { stageTime: '09:55', startTime: '10:15' },
+  'JV B Boys': { date: '2026-08-02', stageTime: '07:40', startTime: '08:00' },
+  'JV C Boys': { date: '2026-08-02', stageTime: '07:45', startTime: '08:05' },
+  'JV A Boys': { date: '2026-08-02', stageTime: '08:35', startTime: '08:55' },
+  'Varsity Boys': { date: '2026-08-02', stageTime: '09:50', startTime: '10:10' },
+  'Varsity Girls': { date: '2026-08-02', stageTime: '09:55', startTime: '10:15' },
 };
 
 const participants: RaceParticipant[] = [
@@ -57,25 +58,25 @@ describe('WaveScheduleService', () => {
   it('TC-027: correct wave/category groupings for multi-wave team', () => {
     const schedule = service.generateSchedule('Brighton', participants, waveConfig, categorySchedule, 'Test Event', '2026-08-02');
     const waveNames = schedule.waves.map((w) => w.waveName);
-    expect(waveNames).toContain('Wave 1 - HS');
-    expect(waveNames).toContain('Wave 3 - HS');
-    expect(schedule.waves.find((w) => w.waveName === 'Wave 1 - HS')?.categories).toHaveLength(2);
-    expect(schedule.waves.find((w) => w.waveName === 'Wave 3 - HS')?.categories).toHaveLength(1);
+    expect(waveNames).toContain('Wave 1');
+    expect(waveNames).toContain('Wave 3');
+    expect(schedule.waves.find((w) => w.waveName === 'Wave 1')?.categories).toHaveLength(2);
+    expect(schedule.waves.find((w) => w.waveName === 'Wave 3')?.categories).toHaveLength(1);
   });
 
   it('TC-028: athletes sorted alphabetically by last name within category', () => {
     const schedule = service.generateSchedule('Brighton', participants, waveConfig, categorySchedule, 'Test', '2026-08-02');
     const varsityBoys = schedule.waves
-      .find((w) => w.waveName === 'Wave 3 - HS')
+      .find((w) => w.waveName === 'Wave 3')
       ?.categories.find((c) => c.categoryName === 'Varsity Boys');
     expect(varsityBoys?.athletes[0].lastName).toBe('Adams');
     expect(varsityBoys?.athletes[1].lastName).toBe('Clark');
   });
 
-  it('TC-029: categories sorted alphabetically within wave', () => {
+  it('TC-029: categories sorted by start time within wave', () => {
     const schedule = service.generateSchedule('Brighton', participants, waveConfig, categorySchedule, 'Test', '2026-08-02');
     const wave1Categories = schedule.waves
-      .find((w) => w.waveName === 'Wave 1 - HS')
+      .find((w) => w.waveName === 'Wave 1')
       ?.categories.map((c) => c.categoryName);
     expect(wave1Categories).toEqual(['JV B Boys', 'JV C Boys']);
   });
@@ -83,8 +84,8 @@ describe('WaveScheduleService', () => {
   it('TC-030: waves ordered by earliest category start time from the uploaded schedule', () => {
     const schedule = service.generateSchedule('Brighton', participants, waveConfig, categorySchedule, 'Test', '2026-08-02');
     const withKnownStart = schedule.waves.filter((w) => w.categories.some((c) => c.startTime));
-    expect(withKnownStart[0].waveName).toBe('Wave 1 - HS');
-    expect(withKnownStart[1].waveName).toBe('Wave 3 - HS');
+    expect(withKnownStart[0].waveName).toBe('Wave 1');
+    expect(withKnownStart[1].waveName).toBe('Wave 3');
   });
 
   it('TC-031: empty schedule for team with zero participants', () => {
@@ -96,7 +97,7 @@ describe('WaveScheduleService', () => {
   it('TC-032: each category includes stageTime and startTime from the uploaded schedule', () => {
     const schedule = service.generateSchedule('Brighton', participants, waveConfig, categorySchedule, 'Test', '2026-08-02');
     const jvBBoys = schedule.waves
-      .find((w) => w.waveName === 'Wave 1 - HS')
+      .find((w) => w.waveName === 'Wave 1')
       ?.categories.find((c) => c.categoryName === 'JV B Boys');
     expect(jvBBoys?.stageTime).toBe('07:40');
     expect(jvBBoys?.startTime).toBe('08:00');
@@ -136,15 +137,17 @@ describe('WaveScheduleService', () => {
       { firstName: 'A', lastName: 'A', team: 'Brighton', category: 'Known Category', bibNumber: '1', callUpNumber: '1' },
       { firstName: 'B', lastName: 'B', team: 'Brighton', category: 'Unscheduled Category', bibNumber: '2', callUpNumber: '1' },
     ];
-    const sched: Record<string, CategorySchedule> = { 'Known Category': { stageTime: '08:00', startTime: '08:20' } };
+    const sched: Record<string, CategorySchedule> = { 'Known Category': { date: '2026-08-02', stageTime: '08:00', startTime: '08:20' } };
     const schedule = service.generateSchedule('Brighton', mixedParticipants, [], sched, 'Test', '2026-08-02');
-    expect(schedule.waves.map((w) => w.waveName)).toEqual(['Known Category', 'Unscheduled Category']);
+    expect(schedule.waves.map((w) => w.waveName)).toEqual(['Wave 1', 'Unscheduled Category']);
   });
 
   it('TC-035: omit waves with no athletes from selected team', () => {
     const schedule = service.generateSchedule('Brighton', participants, waveConfig, categorySchedule, 'Test', '2026-08-02');
-    // Brighton has no athletes in Wave 2 (JV A Boys) — Wave 2 should not appear
-    expect(schedule.waves.find((w) => w.waveName === 'Wave 2 - HS')).toBeUndefined();
+    // Brighton has no athletes in Wave 2 (JV A Boys) — Wave 2 should not appear, and the
+    // remaining waves keep their official numbers (1, 3) rather than being renumbered 1, 2.
+    expect(schedule.waves.find((w) => w.waveName === 'Wave 2')).toBeUndefined();
+    expect(schedule.waves.map((w) => w.waveNumber)).toEqual([1, 3, null]);
   });
 
   it('maps entry with no laps to null in category schedule', () => {
@@ -158,7 +161,7 @@ describe('WaveScheduleService', () => {
     const ps: RaceParticipant[] = [
       { firstName: 'A', lastName: 'B', team: 'Team', category: 'Open', bibNumber: '1', callUpNumber: '1' },
     ];
-    const sched: Record<string, CategorySchedule> = { Open: { stageTime: '08:00', startTime: '08:20' } };
+    const sched: Record<string, CategorySchedule> = { Open: { date: '2026-08-02', stageTime: '08:00', startTime: '08:20' } };
     const schedule = service.generateSchedule('Team', ps, noLapsConfig, sched, 'Event', '2026-08-02');
     expect(schedule.waves[0].categories[0].laps).toBeNull();
   });
@@ -193,7 +196,7 @@ describe('WaveScheduleService', () => {
         firstName: `F${i}`, lastName: `L${i}`, team: 'Team', category: 'Open',
         bibNumber: String(i), callUpNumber: String(i + 1),
       }));
-      const sched: Record<string, CategorySchedule> = { Open: { stageTime: '08:00', startTime: '08:20' } };
+      const sched: Record<string, CategorySchedule> = { Open: { date: '2026-08-02', stageTime: '08:00', startTime: '08:20' } };
       return service.generateSchedule('Team', ps, config, sched, 'Event', '2026-08-02');
     }
 
@@ -251,7 +254,7 @@ describe('WaveScheduleService', () => {
         { firstName: 'C', lastName: 'C', team: 'Home Team', category: 'Open', bibNumber: '3', callUpNumber: '9' },
       ];
       const ps = [...homeTeamRiders, ...otherTeamRiders];
-      const sched: Record<string, CategorySchedule> = { Open: { stageTime: '08:00', startTime: '08:20' } };
+      const sched: Record<string, CategorySchedule> = { Open: { date: '2026-08-02', stageTime: '08:00', startTime: '08:20' } };
       const schedule = service.generateSchedule('Home Team', ps, config, sched, 'Event', '2026-08-02');
       // Field size = 30 (all teams) → threshold 10, so all 3 Home Team riders (callUpNumber 7-9) qualify —
       // they would NOT qualify under a threshold of 5 computed from just their own 3-rider contingent.
@@ -270,7 +273,7 @@ describe('WaveScheduleService', () => {
       const ps: RaceParticipant[] = [
         { firstName: 'A', lastName: 'A', team: 'Team', category: 'Open', bibNumber: '1', callUpNumber: null },
       ];
-      const sched: Record<string, CategorySchedule> = { Open: { stageTime: '08:00', startTime: '08:20' } };
+      const sched: Record<string, CategorySchedule> = { Open: { date: '2026-08-02', stageTime: '08:00', startTime: '08:20' } };
       const schedule = service.generateSchedule('Team', ps, config, sched, 'Event', '2026-08-02');
       expect(schedule.waves[0].categories[0].athletes[0].calledUp).toBe(false);
     });
@@ -285,8 +288,8 @@ describe('WaveScheduleService', () => {
       },
     ];
     const sched: Record<string, CategorySchedule> = {
-      'Beginner 7th Grade Boys Split 1': { stageTime: '15:40', startTime: '15:55' },
-      'Beginner 7th Grade Boys Split 2': { stageTime: '15:45', startTime: '16:00' },
+      'Beginner 7th Grade Boys Split 1': { date: '2026-08-02', stageTime: '15:40', startTime: '15:55' },
+      'Beginner 7th Grade Boys Split 2': { date: '2026-08-02', stageTime: '15:45', startTime: '16:00' },
     };
     // callUpNumber ranks the whole combined field (1-30 here), not reset per split.
     const ps: RaceParticipant[] = [
@@ -300,12 +303,17 @@ describe('WaveScheduleService', () => {
       })),
     ];
 
-    it('still groups both splits under the WaveConfig-assigned wave, as distinct categories', () => {
+    it('groups splits starting within 5 minutes into one wave, as distinct categories', () => {
       const schedule = service.generateSchedule('Team', ps, config, sched, 'Event', '2026-08-02');
       expect(schedule.waves).toHaveLength(1);
-      expect(schedule.waves[0].waveName).toBe('Wave 9 - JD');
+      expect(schedule.waves[0].waveName).toBe('Wave 1');
       const names = schedule.waves[0].categories.map((c) => c.categoryName);
       expect(names).toEqual(['Beginner 7th Grade Boys Split 1', 'Beginner 7th Grade Boys Split 2']);
+    });
+
+    it('takes laps for each split from its base category in WaveConfig', () => {
+      const schedule = service.generateSchedule('Team', ps, config, sched, 'Event', '2026-08-02');
+      expect(schedule.waves[0].categories.map((c) => c.laps)).toEqual([1, 1]);
     });
 
     it('gives each split its own stage/start time', () => {
@@ -322,6 +330,38 @@ describe('WaveScheduleService', () => {
       const [split1, split2] = schedule.waves[0].categories;
       expect(split1.athletes.filter((a) => a.calledUp)).toHaveLength(10);
       expect(split2.athletes.filter((a) => a.calledUp)).toHaveLength(0);
+    });
+  });
+
+  describe('waves from the official call-up list', () => {
+    it('ignores WaveConfig wave names, numbering waves from the call-up list times instead', () => {
+      const schedule = service.generateSchedule('Brighton', participants, waveConfig, categorySchedule, 'Test', '2026-08-02');
+      expect(schedule.waves.map((w) => w.waveName)).toEqual(['Wave 1', 'Wave 3', 'Unknown Category']);
+      expect(schedule.waves[0].day).toBeNull();
+    });
+
+    it('numbers waves per day with a "Day N" prefix when the race spans multiple days', () => {
+      const sched: Record<string, CategorySchedule> = {
+        'JV B Boys': { date: '2026-10-23', stageTime: '08:15', startTime: '08:30' },
+        'JV C Boys': { date: '2026-10-23', stageTime: '09:25', startTime: '09:40' },
+        'Varsity Boys': { date: '2026-10-24', stageTime: '08:15', startTime: '08:30' },
+        'Varsity Girls': { date: '2026-10-24', stageTime: '08:20', startTime: '08:35' },
+      };
+      const schedule = service.generateSchedule(
+        'Brighton', participants, [], sched, 'State', '2026-10-23', ['2026-10-23', '2026-10-24'],
+      );
+      expect(schedule.eventDates).toEqual(['2026-10-23', '2026-10-24']);
+      // Day 2's 8:30 start sorts after Day 1's 9:40 start — ordering is by day first.
+      expect(schedule.waves.map((w) => w.waveName)).toEqual(['Day 1 Wave 1', 'Day 1 Wave 2', 'Day 2 Wave 1', 'Unknown Category']);
+      expect(schedule.waves.map((w) => w.day)).toEqual([1, 1, 2, null]);
+      expect(schedule.waves[2].categories.map((c) => c.categoryName)).toEqual(['Varsity Boys']);
+    });
+
+    it('defaults eventDates to the single eventDate when not provided', () => {
+      const schedule = service.generateSchedule('Brighton', participants, waveConfig, categorySchedule, 'Test', '2026-08-02');
+      expect(schedule.eventDates).toEqual(['2026-08-02']);
+      const empty = service.generateSchedule('Nobody', participants, waveConfig, categorySchedule, 'Test', '');
+      expect(empty.eventDates).toEqual([]);
     });
   });
 });

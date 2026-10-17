@@ -76,6 +76,23 @@ describe('parseCallUpListPdf', () => {
     expect(result.categories[0].startTime).toBe('13:00');
   });
 
+  it('records each category\'s own race date, so a multi-day race keeps its days apart', async () => {
+    const buffer = await buildPdf([
+      'JV B Boys',
+      'STAGING TIME: 10/23/2026 @ 8:15 AM',
+      'START TIME: 10/23/2026 @ 8:30 AM',
+      '8:15 AM 1 20001 5 JOHN SMITH 2 10 Lehi HS JV B Boys',
+      'Varsity Boys',
+      'STAGING TIME: 10/24/2026 @ 3:20 PM',
+      'START TIME: 10/24/2026 @ 3:35 PM',
+      '3:20 PM 1 10001 5 MAX POWER 2 11 Lehi HS Varsity Boys',
+    ]);
+
+    const result = await parseCallUpListPdf(buffer);
+    expect(result.eventDate).toBe('2026-10-23');
+    expect(result.categories.map((c) => c.date)).toEqual(['2026-10-23', '2026-10-24']);
+  });
+
   it('starts a new category on consecutive header lines with no blank separator', async () => {
     const buffer = await buildPdf([
       'Varsity Boys',

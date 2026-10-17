@@ -11,6 +11,7 @@ interface ImportResult {
   eventId: string;
   eventName: string;
   eventDate: string;
+  eventDates?: string[];
   eventLocation: string;
   teams: string[];
   participantCount: number;
@@ -47,6 +48,9 @@ interface WaveCategory {
 
 interface WaveGroup {
   waveName: string;
+  waveNumber: number | null;
+  day: number | null;
+  date: string;
   categories: WaveCategory[];
 }
 
@@ -54,8 +58,16 @@ interface Schedule {
   teamName: string;
   eventName: string;
   eventDate: string;
+  eventDates?: string[];
   totalAthletes: number;
   waves: WaveGroup[];
+}
+
+// A multi-day race (e.g. State) shows its full date range rather than just the first day.
+function formatEventDates(eventDate: string, eventDates?: string[]): string {
+  return eventDates && eventDates.length > 1
+    ? `${eventDates[0]} – ${eventDates[eventDates.length - 1]}`
+    : eventDate;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -302,7 +314,7 @@ export default function RaceDayPage() {
       {step === 'team' && importResult && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm">
-            <strong>{importResult.eventName}</strong> &mdash; {importResult.eventDate} &mdash;{' '}
+            <strong>{importResult.eventName}</strong> &mdash; {formatEventDates(importResult.eventDate, importResult.eventDates)} &mdash;{' '}
             {importResult.eventLocation} &mdash; {importResult.participantCount} participants
           </div>
 
@@ -340,7 +352,7 @@ export default function RaceDayPage() {
               <div>
                 <h2 className="text-xl font-bold">{schedule.teamName}</h2>
                 <p className="text-sm text-gray-500">
-                  {schedule.eventName} &mdash; {schedule.eventDate} &mdash;{' '}
+                  {schedule.eventName} &mdash; {formatEventDates(schedule.eventDate, schedule.eventDates)} &mdash;{' '}
                   {schedule.totalAthletes} athletes
                 </p>
               </div>
