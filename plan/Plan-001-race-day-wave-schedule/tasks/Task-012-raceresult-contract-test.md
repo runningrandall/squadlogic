@@ -2,7 +2,7 @@
 id: Task-012
 title: "IT-006 — RaceResult structure validation"
 type: Task
-status: done
+status: RETIRED
 track: C
 priority: P1
 relationships:
@@ -36,6 +36,8 @@ relationships:
     type: verifies
 ---
 # Task-012: IT-006 — RaceResult structure validation
+
+**Status: RETIRED** — there is no RaceResult page/API structure to contract-test anymore; the closest analogous coverage (fixture workbook shapes, header row detection) is folded into the IT-008 test suite implemented alongside Task-016/Task-017, with no standalone task file added.
 
 ## Scope
 Implement the RaceResult page structure contract test. Validate HTML DOM elements, JSON-LD schema, RRPublish initialization, teams dropdown CSS selector, participant API endpoint contract, and API response format against a cached baseline snapshot. Schedule for daily CI execution.

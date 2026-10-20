@@ -6,6 +6,7 @@ import {
   signUp as amplifySignUp,
   signOut as amplifySignOut,
   confirmSignUp as amplifyConfirmSignUp,
+  confirmSignIn as amplifyConfirmSignIn,
   resetPassword as amplifyResetPassword,
   confirmResetPassword as amplifyConfirmResetPassword,
   getCurrentUser,
@@ -34,6 +35,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<{ nextStep: string }>;
+  confirmNewPassword: (newPassword: string) => Promise<{ nextStep: string }>;
   signUp: (email: string, password: string) => Promise<void>;
   confirmSignUp: (email: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -111,6 +113,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { nextStep: result.nextStep.signInStep };
   }, [loadUser]);
 
+  const handleConfirmNewPassword = useCallback(async (newPassword: string) => {
+    const result = await amplifyConfirmSignIn({ challengeResponse: newPassword });
+    if (result.isSignedIn) {
+      await loadUser();
+    }
+    return { nextStep: result.nextStep.signInStep };
+  }, [loadUser]);
+
   const handleSignUp = useCallback(async (email: string, password: string) => {
     await amplifySignUp({
       username: email,
@@ -150,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         signIn: handleSignIn,
+        confirmNewPassword: handleConfirmNewPassword,
         signUp: handleSignUp,
         confirmSignUp: handleConfirmSignUp,
         signOut: handleSignOut,

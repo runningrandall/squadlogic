@@ -13,7 +13,7 @@ relationships:
 
 ## Description
 
-The system SHALL create a new Google Sheet in the user's Google Drive containing the enriched wave schedule data. The system SHALL authenticate with Google via OAuth 2.0 and request the minimum required Drive/Sheets scopes. The spreadsheet SHALL be formatted with wave and category groupings, athlete logistics times, and basic styling.
+The system SHALL create a new Google Sheet in the user's Google Drive containing the enriched wave schedule data. The system SHALL authenticate with Google via OAuth 2.0 and request the minimum required Drive/Sheets scopes. The spreadsheet SHALL be formatted with wave and category groupings, athlete logistics times, and basic styling. Each athlete row SHALL include a "Staging #" column — the athlete's call-up/staging order number as sourced from the uploaded call-up list ([FR-014](./FR-014-extract-callup-participants.md)).
 
 ## Inputs
 
@@ -26,7 +26,7 @@ The system SHALL create a new Google Sheet in the user's Google Drive containing
 - A new Google Sheet created in the user's Google Drive containing:
   - Sheet title: `{teamName} - {eventName} - {eventDate}`
   - Header row with event metadata
-  - Data organized by wave and category with columns: Wave, Category, Athlete Name, Bib #, Arrival, Warmup Start, Warmup End, Staging, Race Start, Laps
+  - Data organized by wave and category with columns: Wave, Category, Athlete Name, Bib #, Staging #, Arrival, Warmup Start, Warmup End, Staging, Race Start, Laps
   - Basic formatting: bold headers, wave group borders, frozen header row
 
 ## Behavior
@@ -50,6 +50,7 @@ The system SHALL create a new Google Sheet in the user's Google Drive containing
 | FR-010-AC-5 | The system returns a clickable URL to the created spreadsheet | Test |
 | FR-010-AC-6 | Given the user denies Google OAuth, the system displays an error with a suggestion to use PDF export | Test |
 | FR-010-AC-7 | Each export creates a new spreadsheet — existing sheets are not overwritten | Test |
+| FR-010-AC-8 | The spreadsheet includes a Staging # column populated with each athlete's call-up number from the uploaded call-up list | Test |
 
 ## Dependencies
 

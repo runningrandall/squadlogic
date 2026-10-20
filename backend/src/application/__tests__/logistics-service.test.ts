@@ -67,41 +67,43 @@ describe('LogisticsService', () => {
   });
 
   describe('calculateTimeline', () => {
-    it('TC-048: Varsity Boys timeline with arrival=70, warmup=30', () => {
-      const result = service.calculateTimeline('10:10', '09:50', 70, 30);
-      expect(result.arrivalTime).toBe('09:00');
-      expect(result.warmupStart).toBe('09:00');
-      expect(result.warmupEnd).toBe('09:30');
-      expect(result.stagingTime).toBe('09:50');
-      expect(result.raceStart).toBe('10:10');
-    });
+    // Rules: waveMeeting passed in; warmupStart = waveMeeting + 10 (passed in);
+    //        stagingTime = startTime - 15; warmupEnd = stagingTime - 5
 
-    it('TC-049: Varsity Girls staggered start timeline', () => {
-      const result = service.calculateTimeline('10:15', '09:55', 70, 30);
-      expect(result.arrivalTime).toBe('09:05');
-      expect(result.warmupStart).toBe('09:05');
-      expect(result.warmupEnd).toBe('09:35');
-      expect(result.stagingTime).toBe('09:55');
-      expect(result.raceStart).toBe('10:15');
-    });
-
-    it('TC-050: JV B Boys timeline with arrival=60, warmup=30', () => {
-      const result = service.calculateTimeline('08:00', '07:40', 60, 30);
-      expect(result.arrivalTime).toBe('07:00');
-      expect(result.warmupStart).toBe('07:00');
-      expect(result.warmupEnd).toBe('07:30');
-      expect(result.stagingTime).toBe('07:40');
+    it('TC-050: validates the documented example — start 08:00, meeting 07:00', () => {
+      const result = service.calculateTimeline('08:00', '07:00', '07:10');
+      expect(result.waveMeetingTime).toBe('07:00');
+      expect(result.warmupStart).toBe('07:10');
+      expect(result.warmupEnd).toBe('07:40');   // 08:00 - 20 min
+      expect(result.stagingTime).toBe('07:45'); // 08:00 - 15 min
       expect(result.raceStart).toBe('08:00');
     });
 
-    it('TC-051: user override arrival=90 for Wave 3, Varsity Boys start=10:10', () => {
-      const result = service.calculateTimeline('10:10', '09:50', 90, 30);
-      expect(result.arrivalTime).toBe('08:40');
+    it('TC-048: Varsity Boys timeline', () => {
+      const result = service.calculateTimeline('10:10', '09:10', '09:20');
+      expect(result.waveMeetingTime).toBe('09:10');
+      expect(result.warmupStart).toBe('09:20');
+      expect(result.warmupEnd).toBe('09:50');   // 10:10 - 20 min
+      expect(result.stagingTime).toBe('09:55'); // 10:10 - 15 min
+      expect(result.raceStart).toBe('10:10');
     });
 
-    it('TC-054: warmup recalculation — warmup=20 instead of 30', () => {
-      const result = service.calculateTimeline('10:10', '09:50', 70, 20);
-      expect(result.warmupEnd).toBe('09:20');
+    it('TC-049: Varsity Girls — later start shifts WU end and staging', () => {
+      const result = service.calculateTimeline('10:15', '09:10', '09:20');
+      expect(result.waveMeetingTime).toBe('09:10'); // same global meeting
+      expect(result.warmupStart).toBe('09:20');     // same global WU start
+      expect(result.warmupEnd).toBe('09:55');       // 10:15 - 20 min
+      expect(result.stagingTime).toBe('10:00');     // 10:15 - 15 min
+      expect(result.raceStart).toBe('10:15');
+    });
+
+    it('returns empty logistics when waveMeetingTime is empty', () => {
+      const result = service.calculateTimeline('', '', '');
+      expect(result.waveMeetingTime).toBe('');
+      expect(result.warmupStart).toBe('');
+      expect(result.warmupEnd).toBe('');
+      expect(result.raceStart).toBe('');
+      expect(result.stagingTime).toBe('');
     });
   });
 
@@ -121,8 +123,8 @@ describe('LogisticsService', () => {
               startTime: '10:10',
               laps: 4,
               athletes: [
-                { firstName: 'Dave', lastName: 'Adams', bibNumber: '201' },
-                { firstName: 'Mike', lastName: 'Clark', bibNumber: '202' },
+                { firstName: 'Dave', lastName: 'Adams', bibNumber: '201', callUpNumber: '1' },
+                { firstName: 'Mike', lastName: 'Clark', bibNumber: '202', callUpNumber: '1' },
               ],
             },
             {
@@ -131,7 +133,7 @@ describe('LogisticsService', () => {
               startTime: '10:15',
               laps: 3,
               athletes: [
-                { firstName: 'Sara', lastName: 'Evans', bibNumber: '301' },
+                { firstName: 'Sara', lastName: 'Evans', bibNumber: '301', callUpNumber: '1' },
               ],
             },
           ],
@@ -140,20 +142,194 @@ describe('LogisticsService', () => {
     };
 
     it('TC-052: same-category athletes have identical logistics times', () => {
-      const config = service.calculateDefaults(waveConfig);
-      const enriched = service.enrichSchedule(schedule, config);
+      const enriched = service.enrichSchedule(schedule);
       const varsityBoys = enriched.waves[0].categories[0].athletes;
       expect(varsityBoys[0].logistics).toEqual(varsityBoys[1].logistics);
     });
 
-    it('TC-053: different categories in same wave have different times', () => {
-      const config = service.calculateDefaults(waveConfig);
-      const enriched = service.enrichSchedule(schedule, config);
+    it('TC-053: all categories share global wave meeting and WU start; race starts differ', () => {
+      const enriched = service.enrichSchedule(schedule);
       const boys = enriched.waves[0].categories[0].athletes[0].logistics;
       const girls = enriched.waves[0].categories[1].athletes[0].logistics;
       expect(boys?.raceStart).toBe('10:10');
       expect(girls?.raceStart).toBe('10:15');
-      expect(boys?.arrivalTime).not.toBe(girls?.arrivalTime);
+      expect(boys?.waveMeetingTime).toBe(girls?.waveMeetingTime);
+      expect(boys?.warmupStart).toBe(girls?.warmupStart);
+    });
+
+    it('wave meeting = earliest startTime in that wave - 60 min', () => {
+      const enriched = service.enrichSchedule(schedule);
+      // Earliest start in wave = 10:10; meeting = 10:10 - 60 = 09:10
+      const waveMeetingTime = enriched.waves[0].categories[0].athletes[0].logistics?.waveMeetingTime;
+      expect(waveMeetingTime).toBe('09:10');
+    });
+
+    it('WU start = wave meeting + 10 min', () => {
+      const enriched = service.enrichSchedule(schedule);
+      // wave meeting = 09:10; WU start = 09:10 + 10 = 09:20
+      const warmupStart = enriched.waves[0].categories[0].athletes[0].logistics?.warmupStart;
+      expect(warmupStart).toBe('09:20');
+    });
+
+    it('different waves get different wave meeting times based on their own start times', () => {
+      const multiWaveSchedule: TeamWaveSchedule = {
+        ...schedule,
+        waves: [
+          { waveName: 'Wave 1', categories: [{ categoryName: 'JV B Boys', stageTime: '07:40', startTime: '08:00', laps: 2, athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1' }] }] },
+          { waveName: 'Wave 2', categories: [{ categoryName: 'Varsity Boys', stageTime: '09:50', startTime: '10:10', laps: 4, athletes: [{ firstName: 'C', lastName: 'D', bibNumber: '2', callUpNumber: '1' }] }] },
+        ],
+      };
+      const enriched = service.enrichSchedule(multiWaveSchedule);
+      const wave1Meeting = enriched.waves[0].categories[0].athletes[0].logistics?.waveMeetingTime;
+      const wave2Meeting = enriched.waves[1].categories[0].athletes[0].logistics?.waveMeetingTime;
+      expect(wave1Meeting).toBe('07:00'); // 08:00 - 60
+      expect(wave2Meeting).toBe('09:10'); // 10:10 - 60
+    });
+
+    describe('splits share a wave meeting', () => {
+      const athlete = { firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1', calledUp: false };
+      const cat = (categoryName: string, startTime: string) => ({ categoryName, stageTime: '', startTime, laps: 1, athletes: [athlete] });
+      const wave = (waveName: string, date: string, ...categories: ReturnType<typeof cat>[]) =>
+        ({ waveName, waveNumber: 1, day: null, date, categories });
+      const logisticsOf = (s: TeamWaveSchedule, w: number, c = 0) => s.waves[w].categories[c].athletes[0].logistics!;
+
+      it('a later split within 90 min attends the first split\'s wave meeting; its own times stay distinct', () => {
+        const enriched = service.enrichSchedule({
+          ...schedule,
+          waves: [
+            wave('Wave 5', '2026-08-22', cat('Beginner Boys Split 1', '10:00')),
+            wave('Wave 6', '2026-08-22', cat('Freshman Girls', '10:30'), cat('Beginner Boys Split 2', '10:30')),
+          ],
+        });
+        const split1 = logisticsOf(enriched, 0);
+        const freshman = logisticsOf(enriched, 1, 0);
+        const split2 = logisticsOf(enriched, 1, 1);
+
+        expect(split1.waveMeetingTime).toBe('09:00');
+        expect(split2.waveMeetingTime).toBe('09:00'); // shared with Split 1, not its wave's 09:30
+        expect(freshman.waveMeetingTime).toBe('09:30'); // non-split category keeps its wave's meeting
+
+        expect(split2.warmupStart).toBe('09:40'); // own wave: 10:30 - 60 + 10
+        expect(split2.warmupEnd).toBe('10:10');
+        expect(split2.stagingTime).toBe('10:15');
+        expect(split2.raceStart).toBe('10:30');
+        expect(split1.warmupStart).toBe('09:10');
+      });
+
+      it('a split exactly 90 min after the first still shares; 91 min starts a new meeting', () => {
+        const enriched = service.enrichSchedule({
+          ...schedule,
+          waves: [
+            wave('Wave 1', '2026-08-22', cat('JV Boys Split 1', '08:00')),
+            wave('Wave 2', '2026-08-22', cat('JV Boys Split 2', '09:30')),
+            wave('Wave 3', '2026-08-22', cat('JV Boys Split 3', '09:31')),
+            wave('Wave 4', '2026-08-22', cat('JV Boys Split 4', '10:40')),
+          ],
+        });
+        expect(logisticsOf(enriched, 0).waveMeetingTime).toBe('07:00');
+        expect(logisticsOf(enriched, 1).waveMeetingTime).toBe('07:00');
+        expect(logisticsOf(enriched, 2).waveMeetingTime).toBe('08:31'); // new group anchored on Split 3
+        expect(logisticsOf(enriched, 3).waveMeetingTime).toBe('08:31'); // 69 min after Split 3
+      });
+
+      it('splits on different race days never share a meeting', () => {
+        const enriched = service.enrichSchedule({
+          ...schedule,
+          waves: [
+            wave('Day 1 Wave 1', '2026-08-22', cat('JV Boys Split 1', '08:00')),
+            wave('Day 2 Wave 1', '2026-08-23', cat('JV Boys Split 2', '08:30')),
+          ],
+        });
+        expect(logisticsOf(enriched, 0).waveMeetingTime).toBe('07:00');
+        expect(logisticsOf(enriched, 1).waveMeetingTime).toBe('07:30');
+      });
+    });
+
+    it('JD waves use the standard earliest-start-60 formula, same as every other wave', () => {
+      // Each JD wave publishes its own meeting time on the league schedule (lehimtb.com/race-day) —
+      // Wave 7/8/9 are not a single shared 1pm head-coach meeting.
+      const jdSchedule: TeamWaveSchedule = {
+        ...schedule,
+        waves: [
+          {
+            waveName: 'Wave 7 - JD',
+            categories: [
+              {
+                categoryName: 'Advanced Boys',
+                stageTime: '14:15',
+                startTime: '14:30',
+                laps: 1,
+                athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1' }],
+              },
+            ],
+          },
+        ],
+      };
+      const enriched = service.enrichSchedule(jdSchedule);
+      const logistics = enriched.waves[0].categories[0].athletes[0].logistics;
+      expect(logistics?.waveMeetingTime).toBe('13:30'); // 14:30 - 60, matches published Wave 7 meeting time
+      expect(logistics?.warmupStart).toBe('13:40'); // meeting + 10
+      expect(logistics?.raceStart).toBe('14:30');
+    });
+
+    it('JD wave with multiple categories: shared meeting/warmup, distinct per-category stage/warmup-end', () => {
+      // Matches the official Wave 7 - JD schedule: shared 13:30 meeting / 13:40 warm-up start
+      // across all three categories, but each category stages 15 min before its own start,
+      // with a 5-min buffer between warm-up end and staging.
+      const jdSchedule: TeamWaveSchedule = {
+        ...schedule,
+        waves: [
+          {
+            waveName: 'Wave 7 - JD',
+            categories: [
+              {
+                categoryName: 'Advanced Boys',
+                stageTime: '14:15',
+                startTime: '14:30',
+                laps: 1,
+                athletes: [{ firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1' }],
+              },
+              {
+                categoryName: 'Intermediate Boys 8',
+                stageTime: '14:20',
+                startTime: '14:35',
+                laps: 1,
+                athletes: [{ firstName: 'C', lastName: 'D', bibNumber: '2', callUpNumber: '1' }],
+              },
+              {
+                categoryName: 'Intermediate Boys 7',
+                stageTime: '14:25',
+                startTime: '14:40',
+                laps: 1,
+                athletes: [{ firstName: 'E', lastName: 'F', bibNumber: '3', callUpNumber: '1' }],
+              },
+            ],
+          },
+        ],
+      };
+      const enriched = service.enrichSchedule(jdSchedule);
+      const [advancedBoys, intermBoys8, intermBoys7] = enriched.waves[0].categories.map(
+        (cat) => cat.athletes[0].logistics,
+      );
+
+      // Shared across the whole wave
+      for (const logistics of [advancedBoys, intermBoys8, intermBoys7]) {
+        expect(logistics?.waveMeetingTime).toBe('13:30'); // earliest start (14:30) - 60
+        expect(logistics?.warmupStart).toBe('13:40');     // meeting + 10
+      }
+
+      // Distinct per category: stage = start - 15, warmupEnd = stage - 5
+      expect(advancedBoys?.warmupEnd).toBe('14:10');
+      expect(advancedBoys?.stagingTime).toBe('14:15');
+      expect(advancedBoys?.raceStart).toBe('14:30');
+
+      expect(intermBoys8?.warmupEnd).toBe('14:15');
+      expect(intermBoys8?.stagingTime).toBe('14:20');
+      expect(intermBoys8?.raceStart).toBe('14:35');
+
+      expect(intermBoys7?.warmupEnd).toBe('14:20');
+      expect(intermBoys7?.stagingTime).toBe('14:25');
+      expect(intermBoys7?.raceStart).toBe('14:40');
     });
   });
 });

@@ -57,6 +57,15 @@ describe('ChallengeDynamoRepository', () => {
       expect(ChallengeEntity.create).toHaveBeenCalled();
       expect(result).toEqual(mockChallenge);
     });
+
+    it('creates challenge without description/dueDate/points (uses ?? defaults)', async () => {
+      const minimal = {
+        challengeId: 'c-min', teamId: 'team-1', organizationId: 'org-1', createdBy: 'user-1', title: 'Min',
+      };
+      mockGo.mockResolvedValueOnce({ data: mockChallenge });
+      await repo.create(minimal as any);
+      expect(ChallengeEntity.create).toHaveBeenCalled();
+    });
   });
 
   describe('getById', () => {
@@ -109,6 +118,21 @@ describe('ChallengeDynamoRepository', () => {
     it('throws NotFoundError when update returns no data', async () => {
       mockGo.mockResolvedValueOnce({ data: null });
       await expect(repo.update('org-789', 'missing', { title: 'X' })).rejects.toThrow(NotFoundError);
+    });
+
+    it('updates challenge with a string dueDate (enters if block, keeps value)', async () => {
+      const updated = { ...mockChallenge, dueDate: '2026-06-01' };
+      mockGo.mockResolvedValueOnce({ data: updated });
+      const result = await repo.update('org-789', 'challenge-123', { dueDate: '2026-06-01' });
+      expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ dueDate: '2026-06-01' }));
+      expect(result.dueDate).toBe('2026-06-01');
+    });
+
+    it('updates challenge with null dueDate (enters if block, clears to undefined via ??)', async () => {
+      const updated = { ...mockChallenge, dueDate: undefined };
+      mockGo.mockResolvedValueOnce({ data: updated });
+      await repo.update('org-789', 'challenge-123', { dueDate: null as any });
+      expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ dueDate: undefined }));
     });
   });
 

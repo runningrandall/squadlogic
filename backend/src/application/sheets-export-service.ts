@@ -1,12 +1,14 @@
 import type { TeamWaveSchedule } from '../domain/race-event.js';
 import type { SheetsPort, SheetRow, SheetFormatting } from '../ports/sheets-port.js';
+import { formatTime12Hour } from '../lib/time-format.js';
 
 const COLUMN_HEADERS = [
   'Wave',
   'Category',
   'Athlete Name',
+  'Staging #',
   'Bib #',
-  'Arrival',
+  'Wave Meeting',
   'Warmup Start',
   'Warmup End',
   'Staging',
@@ -14,7 +16,7 @@ const COLUMN_HEADERS = [
   'Laps',
 ];
 
-const COLUMN_WIDTHS = [140, 150, 180, 70, 80, 110, 100, 80, 100, 60];
+const COLUMN_WIDTHS = [140, 150, 180, 70, 70, 80, 110, 100, 80, 100, 60];
 
 export class SheetsExportService {
   constructor(private readonly sheetsPort: SheetsPort) {}
@@ -50,7 +52,7 @@ export class SheetsExportService {
       // Wave header row (merged)
       waveHeaderRows.push(rows.length);
       rows.push({
-        values: [wave.waveName, '', '', '', '', '', '', '', '', ''],
+        values: [wave.waveName, '', '', '', '', '', '', '', '', '', ''],
       });
 
       for (const category of wave.categories) {
@@ -63,12 +65,13 @@ export class SheetsExportService {
               wave.waveName,
               category.categoryName,
               `${athlete.firstName} ${athlete.lastName}`,
+              athlete.callUpNumber ?? '',
               athlete.bibNumber,
-              logistics?.arrivalTime ?? '',
-              logistics?.warmupStart ?? '',
-              logistics?.warmupEnd ?? '',
-              logistics?.stagingTime ?? '',
-              logistics?.raceStart ?? '',
+              logistics?.waveMeetingTime ? formatTime12Hour(logistics.waveMeetingTime) : '',
+              logistics?.warmupStart ? formatTime12Hour(logistics.warmupStart) : '',
+              logistics?.warmupEnd ? formatTime12Hour(logistics.warmupEnd) : '',
+              logistics?.stagingTime ? formatTime12Hour(logistics.stagingTime) : '',
+              logistics?.raceStart ? formatTime12Hour(logistics.raceStart) : '',
               laps ?? '',
             ],
           });

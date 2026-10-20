@@ -2,7 +2,7 @@
 id: Task-001
 title: "FR-001 — URL validation"
 type: Task
-status: done
+status: RETIRED
 track: A
 priority: P0
 relationships:
@@ -26,6 +26,8 @@ relationships:
     type: verifies
 ---
 # Task-001: FR-001 — URL validation
+
+**Status: RETIRED** — superseded by Task-015 (FR-012 call-up list upload validation); RaceResult URL import is no longer part of the system.
 
 ## Scope
 Implement Zod validation schema and Fastify route handler for RaceResult URL input. Accept `https://my.raceresult.com/{numericId}/`, reject all other patterns with HTTP 422 and descriptive error message.

@@ -1,47 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { RaceResultUrlSchema } from '../race-event.js';
+import { CallUpListUploadSchema } from '../race-event.js';
 
-describe('RaceResultUrlSchema', () => {
-  it('TC-001: accepts valid RaceResult URL with trailing slash', () => {
-    const result = RaceResultUrlSchema.safeParse('https://my.raceresult.com/411620/');
+describe('CallUpListUploadSchema', () => {
+  it('accepts a payload with just fileData', () => {
+    const result = CallUpListUploadSchema.safeParse({ fileData: 'base64==' });
     expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.eventId).toBe('411620');
-      expect(result.data.url).toBe('https://my.raceresult.com/411620/');
-    }
   });
 
-  it('TC-002: accepts valid URL without trailing slash and normalizes', () => {
-    const result = RaceResultUrlSchema.safeParse('https://my.raceresult.com/411620');
+  it('accepts optional eventName and eventLocation overrides', () => {
+    const result = CallUpListUploadSchema.safeParse({
+      fileData: 'base64==',
+      eventName: 'UTAH HS MTB 2025 - REGION 5',
+      eventLocation: 'Beaver County, UT',
+    });
     expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.url).toBe('https://my.raceresult.com/411620/');
-      expect(result.data.eventId).toBe('411620');
-    }
   });
 
-  it('TC-003: rejects HTTP scheme URL', () => {
-    const result = RaceResultUrlSchema.safeParse('http://my.raceresult.com/411620/');
+  it('rejects a payload with no fileData', () => {
+    const result = CallUpListUploadSchema.safeParse({});
     expect(result.success).toBe(false);
   });
 
-  it('TC-004: rejects wrong hostname URL', () => {
-    const result = RaceResultUrlSchema.safeParse('https://example.com/411620/');
-    expect(result.success).toBe(false);
-  });
-
-  it('TC-005: rejects URL with no event ID', () => {
-    const result = RaceResultUrlSchema.safeParse('https://my.raceresult.com/');
-    expect(result.success).toBe(false);
-  });
-
-  it('TC-006: rejects empty string', () => {
-    const result = RaceResultUrlSchema.safeParse('');
-    expect(result.success).toBe(false);
-  });
-
-  it('TC-007: rejects non-numeric event ID', () => {
-    const result = RaceResultUrlSchema.safeParse('https://my.raceresult.com/abc/');
+  it('rejects an empty fileData string', () => {
+    const result = CallUpListUploadSchema.safeParse({ fileData: '' });
     expect(result.success).toBe(false);
   });
 });

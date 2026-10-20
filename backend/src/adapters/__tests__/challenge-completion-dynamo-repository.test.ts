@@ -52,6 +52,13 @@ describe('ChallengeCompletionDynamoRepository', () => {
       expect(ChallengeCompletionEntity.create).toHaveBeenCalled();
       expect(result).toEqual(mockCompletion);
     });
+
+    it('creates completion without notes/status (uses defaults)', async () => {
+      const minimal = { ...mockCompletion, notes: undefined as any, status: undefined as any };
+      mockGo.mockResolvedValueOnce({ data: mockCompletion });
+      await repo.create(minimal);
+      expect(ChallengeCompletionEntity.create).toHaveBeenCalled();
+    });
   });
 
   describe('getById', () => {
@@ -123,6 +130,12 @@ describe('ChallengeCompletionDynamoRepository', () => {
       const result = await repo.listByGroup('org-002', 'group-789');
       expect(result.items).toEqual([]);
       expect(result.cursor).toBeUndefined();
+    });
+
+    it('passes cursor when provided', async () => {
+      mockGo.mockResolvedValueOnce({ data: [], cursor: null });
+      await repo.listByGroup('org-002', 'group-789', { cursor: 'abc', limit: 5 });
+      expect(ChallengeCompletionEntity.query.byGroup).toHaveBeenCalled();
     });
   });
 

@@ -73,7 +73,7 @@ describe('InfraStack', () => {
           {
             AllowedHeaders: ['*'],
             AllowedMethods: Match.arrayWith(['GET', 'PUT', 'POST', 'DELETE']),
-            AllowedOrigins: ['https://*.cloudfront.net'],
+            AllowedOrigins: Match.arrayWith(['http://localhost:3000', 'https://test.squadlogic.io']),
             ExposedHeaders: ['ETag'],
             MaxAge: 3600,
           },
@@ -132,50 +132,6 @@ describe('InfraStack', () => {
     });
   });
 
-  test('creates WAF WebACL with rate limiting rule', () => {
-    template.hasResourceProperties('AWS::WAFv2::WebACL', {
-      Name: 'TeamManager-WAF-test',
-      DefaultAction: { Allow: {} },
-      Scope: 'REGIONAL',
-      Rules: [
-        Match.objectLike({
-          Name: 'RaceResultImportRateLimit',
-          Action: {
-            Block: {
-              CustomResponse: {
-                ResponseCode: 429,
-              },
-            },
-          },
-          Statement: {
-            RateBasedStatement: {
-              Limit: 100,
-              AggregateKeyType: 'IP',
-              ScopeDownStatement: {
-                ByteMatchStatement: {
-                  SearchString: '/race-events/import',
-                  FieldToMatch: {
-                    UriPath: {},
-                  },
-                  PositionalConstraint: 'STARTS_WITH',
-                },
-              },
-            },
-          },
-        }),
-      ],
-    });
-  });
-
-  test('WAF WebACL has CloudWatch metrics enabled', () => {
-    template.hasResourceProperties('AWS::WAFv2::WebACL', {
-      VisibilityConfig: {
-        CloudWatchMetricsEnabled: true,
-        SampledRequestsEnabled: true,
-      },
-    });
-  });
-
   test('creates Lambda function for backend API', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: 'TeamManager-API-test',
@@ -209,7 +165,4 @@ describe('InfraStack', () => {
     template.hasOutput('GoogleApiSecretArn', {});
   });
 
-  test('outputs WAF WebACL ARN', () => {
-    template.hasOutput('WafWebAclArn', {});
-  });
 });

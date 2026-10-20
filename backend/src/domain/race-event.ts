@@ -1,26 +1,17 @@
 import { z } from 'zod';
 
-const RACERESULT_URL_REGEX = /^https:\/\/my\.raceresult\.com\/(\d+)\/?$/;
+export const CallUpListUploadSchema = z.object({
+  fileData: z.string().min(1, 'fileData (base64-encoded .xlsx or .pdf) is required'),
+  eventName: z.string().optional(),
+  eventLocation: z.string().optional(),
+});
 
-export const RaceResultUrlSchema = z
-  .string()
-  .min(1, 'URL is required')
-  .regex(
-    RACERESULT_URL_REGEX,
-    'URL must be a valid RaceResult event URL (e.g., https://my.raceresult.com/411620/)',
-  )
-  .transform((url) => {
-    const match = url.match(RACERESULT_URL_REGEX)!;
-    const eventId = match[1];
-    const normalizedUrl = url.endsWith('/') ? url : `${url}/`;
-    return { url: normalizedUrl, eventId };
-  });
-
-export type ValidatedRaceResultUrl = z.output<typeof RaceResultUrlSchema>;
+export type CallUpListUploadDto = z.output<typeof CallUpListUploadSchema>;
 
 export interface RaceEventMetadata {
   eventName: string;
   eventDate: string;
+  eventDates: string[]; // every distinct race day (ISO), sorted; more than one for multi-day races
   eventLocation: string;
   eventId: string;
   sourceUrl: string;
@@ -33,6 +24,7 @@ export interface RaceParticipant {
   team: string;
   category: string;
   bibNumber: string;
+  callUpNumber: string | null;
 }
 
 export interface WaveScheduleEntry {
@@ -45,6 +37,9 @@ export interface WaveScheduleEntry {
 
 export interface WaveGroup {
   waveName: string;
+  waveNumber: number | null; // official wave number within its day; null for an unscheduled category
+  day: number | null; // 1-based race day; null for a single-day race
+  date: string;
   categories: WaveScheduleEntry[];
 }
 
@@ -52,6 +47,7 @@ export interface TeamWaveSchedule {
   teamName: string;
   eventName: string;
   eventDate: string;
+  eventDates: string[];
   totalAthletes: number;
   waves: WaveGroup[];
 }
@@ -60,19 +56,15 @@ export interface ScheduleAthlete {
   firstName: string;
   lastName: string;
   bibNumber: string;
+  callUpNumber: string | null;
+  calledUp: boolean;
   logistics?: AthleteLogistics;
 }
 
 export interface AthleteLogistics {
-  arrivalTime: string;
+  waveMeetingTime: string;
   warmupStart: string;
   warmupEnd: string;
   stagingTime: string;
   raceStart: string;
 }
-
-export const ImportRaceEventSchema = z.object({
-  url: RaceResultUrlSchema,
-});
-
-export type ImportRaceEventDto = z.input<typeof ImportRaceEventSchema>;

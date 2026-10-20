@@ -11,6 +11,8 @@ relationships:
 
 # [FR-003] Extract participant list from RaceResult event data
 
+**Status: RETIRED** — RaceResult dynamic API extraction was replaced by parsing participant rows directly from the uploaded Call-Up List .xlsx; see [FR-014](./FR-014-extract-callup-participants.md) for the current requirement.
+
 ## Description
 
 When event metadata has been successfully parsed, the system SHALL fetch participant data from the RaceResult dynamic API endpoint (e.g., `https://my-us-1.raceresult.com/{eventId}/participants/list?key={key}&listname={listname}&page=participants&contest=0&r=all&l=0`) and extract the complete participant list, producing a structured record for each participant. The system SHALL wait for the API response to complete before parsing. When the system cannot fetch or parse participant data, it SHALL return an error indicating the failure.

@@ -56,6 +56,13 @@ describe('TeamMemberDynamoRepository', () => {
       expect(TeamMemberEntity.create).toHaveBeenCalled();
       expect(result).toEqual(mockMember);
     });
+
+    it('creates team member without jerseyNumber (skips optional spread)', async () => {
+      const noJersey = { ...mockMember, jerseyNumber: null };
+      mockGo.mockResolvedValueOnce({ data: mockMember });
+      await repo.add(noJersey as any);
+      expect(TeamMemberEntity.create).toHaveBeenCalled();
+    });
   });
 
   describe('getById', () => {
@@ -129,6 +136,12 @@ describe('TeamMemberDynamoRepository', () => {
       expect(result.items).toEqual([]);
       expect(result.cursor).toBeUndefined();
     });
+
+    it('passes cursor when provided', async () => {
+      mockGo.mockResolvedValueOnce({ data: [], cursor: null });
+      await repo.listByMember('org-789', 'athlete-001', { cursor: 'page2', limit: 5 });
+      expect(TeamMemberEntity.query.byMember).toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {
@@ -144,6 +157,14 @@ describe('TeamMemberDynamoRepository', () => {
     it('throws NotFoundError when update returns no data', async () => {
       mockGo.mockResolvedValueOnce({ data: null });
       await expect(repo.update('org-789', 'missing', { role: 'captain' })).rejects.toThrow(NotFoundError);
+    });
+
+    it('removes jerseyNumber from updateData when set to null', async () => {
+      const updated = { ...mockMember, jerseyNumber: null };
+      mockGo.mockResolvedValueOnce({ data: updated });
+      await repo.update('org-789', 'tm-123', { jerseyNumber: null } as any);
+      // jerseyNumber: null triggers delete → set is called without jerseyNumber key
+      expect(mockSet).toHaveBeenCalledWith(expect.not.objectContaining({ jerseyNumber: null }));
     });
   });
 

@@ -2,7 +2,7 @@
 id: Task-003
 title: "FR-003 — Participant extraction"
 type: Task
-status: done
+status: RETIRED
 track: A
 priority: P0
 relationships:
@@ -28,6 +28,8 @@ relationships:
     type: verifies
 ---
 # Task-003: FR-003 — Participant extraction
+
+**Status: RETIRED** — superseded by Task-017 (FR-014 call-up list participant extraction); there is no RaceResult dynamic API to fetch anymore.
 
 ## Scope
 Implement participant list extraction from the RaceResult dynamic API endpoint. Discover API key and listname from the initial page fetch (Task-002), construct the participant API URL, fetch the response, parse into structured participant records.

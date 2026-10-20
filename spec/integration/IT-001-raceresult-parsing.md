@@ -11,6 +11,8 @@ relationships:
 
 # [IT-001] RaceResult page parsing end-to-end
 
+**Status: RETIRED** — there is no longer an external RaceResult fetch/parse boundary to verify; see [IT-008](./IT-008-callup-list-parsing.md) for the Call-Up List upload parsing test spec that replaces it.
+
 ## Objective
 
 Verify the integration boundary between the Switchback backend and the external RaceResult platform for the success path: a valid, publicly accessible RaceResult event URL is submitted, the system fetches and parses the page, and returns structured event metadata and a complete participant list. Without this test, parsing logic regressions against real RaceResult page structures would go undetected until production use.

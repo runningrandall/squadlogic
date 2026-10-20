@@ -14,7 +14,7 @@ relationships:
 
 ## Description
 
-The system SHALL store a wave schedule configuration in DynamoDB that maps each wave to its categories, start time, and lap count. The system SHALL seed this configuration with the league-default schedule below. An admin SHALL be able to update wave start times and category assignments. When generating a wave schedule ([FR-005](./FR-005-generate-wave-schedule.md)), the system SHALL present the stored configuration as the default wave-to-start-time mapping, and the user SHALL be able to override start times for a specific session without modifying the persisted defaults.
+The system SHALL store a wave schedule configuration in DynamoDB that maps each wave to its member categories and each category's lap count — this grouping and lap data drive shared wave-meeting logistics. The authoritative per-category `stageTime` and `startTime` are no longer sourced from this configuration; they are supplied by the uploaded call-up list ([FR-013](./FR-013-parse-category-schedule.md)). The system SHALL seed this configuration with the league-default schedule below. An admin SHALL be able to update wave-to-category assignments and lap counts. When generating a wave schedule ([FR-005](./FR-005-generate-wave-schedule.md)), the system SHALL use the stored configuration only to resolve each category's wave-name grouping and lap count; a category absent from the configuration becomes its own standalone wave, named after the category itself, rather than being merged into a catch-all group or silently dropped.
 
 ## Default Wave Schedule (2026 Utah HS MTB League)
 
@@ -48,10 +48,12 @@ The system SHALL store a wave schedule configuration in DynamoDB that maps each 
 *HS Podiums @ 14:45. JV DEVO Podiums @ 17:00-17:30.*
 *Schedule is subject to change.*
 
+**Note**: The Stage Time and Start Time columns above are retained in the seed data and in the `WaveConfigEntry` schema for backward structural compatibility, but are no longer read during wave schedule generation ([FR-005](./FR-005-generate-wave-schedule.md)). The authoritative per-category stage and start times now come from the uploaded call-up list ([FR-013](./FR-013-parse-category-schedule.md)).
+
 ## Inputs
 
 - For read: no input required (returns current configuration)
-- For update (admin only): wave identifier, updated start time, and/or updated category list
+- For update (admin only): wave identifier, updated category list, and/or updated lap counts per category
 
 ## Outputs
 
@@ -59,29 +61,29 @@ The system SHALL store a wave schedule configuration in DynamoDB that maps each 
   - `waveName` (string): Wave identifier (e.g., "Wave 1 - HS")
   - `entries` (array): Per-category entries in this wave, each containing:
     - `categoryName` (string): Category name (e.g., "JV B Boys")
-    - `stageTime` (string, HH:MM 24-hour): Staging area report time
-    - `startTime` (string, HH:MM 24-hour): Race start time
-    - `laps` (number or null): Number of laps for this category
+    - `stageTime` (string, HH:MM 24-hour): Retained for backward structural compatibility; not read by schedule generation
+    - `startTime` (string, HH:MM 24-hour): Retained for backward structural compatibility; not read by schedule generation
+    - `laps` (number or null): Number of laps for this category (authoritative — used by schedule generation)
 
 ## Behavior
 
 - The system SHALL store the wave schedule configuration in a DynamoDB entity with `organizationId = "GLOBAL"` to indicate league-wide scope.
 - The system SHALL seed the configuration with the default schedule on first access if no configuration exists.
-- The system SHALL allow admin users to update wave start times and category assignments.
-- The system SHALL validate that start times are in HH:MM 24-hour format.
+- The system SHALL allow admin users to update wave-to-category assignments and lap counts.
+- The system SHALL continue to validate `stageTime`/`startTime` as HH:MM 24-hour format when present on an entry, for backward structural compatibility, even though these fields are not read by wave schedule generation.
 - The system SHALL validate that no duplicate categories exist across waves (each category belongs to exactly one wave).
-- When a user generates a wave schedule, the system SHALL present the stored configuration as the default start times, and the user SHALL be able to override any wave's start time for that session without modifying the persisted configuration.
+- When a user generates a wave schedule, the system SHALL use the stored configuration only to resolve each category's wave-name grouping and lap count; a category absent from the configuration becomes its own standalone wave rather than being merged into a catch-all group or dropped.
 
 ## Acceptance Criteria
 
 | ID | Criteria | Verification |
 |----|----------|--------------|
 | FR-008-AC-1 | On first access with no existing configuration, the system seeds the default schedule from the table above | Test |
-| FR-008-AC-2 | An admin updates Wave 1 start time from 8:00 to 8:15 — the persisted configuration reflects 8:15 for subsequent reads | Test |
+| FR-008-AC-2 | An admin moves category "JV A Boys" from Wave 2 to Wave 3 — the persisted configuration reflects the new wave assignment for subsequent reads | Test |
 | FR-008-AC-3 | A non-admin user cannot modify the persisted wave schedule configuration | Test |
-| FR-008-AC-4 | A user overrides Wave 1 start time to 8:30 for their session — the persisted default remains 8:00 | Test |
+| FR-008-AC-4 | A wave schedule is generated for a team — the wave schedule configuration only contributes wave-name grouping and lap count to the result; stageTime/startTime on the schedule come from the uploaded call-up list instead | Test |
 | FR-008-AC-5 | Given a category "JV A Boys" assigned to Wave 2, attempting to also assign it to Wave 3 is rejected as a duplicate | Test |
-| FR-008-AC-6 | Given a start time value of "25:00", the system rejects with a validation error | Test |
+| FR-008-AC-6 | Given a start time value of "25:00" on an entry, the system rejects with a validation error (backward-compatible schema validation) | Test |
 | FR-008-AC-7 | The configuration is stored with organizationId "GLOBAL" and is accessible to all authenticated users | Test |
 
 ## Dependencies

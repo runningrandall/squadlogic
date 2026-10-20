@@ -28,10 +28,11 @@ const sampleSchedule: TeamWaveSchedule = {
               firstName: 'Dave',
               lastName: 'Adams',
               bibNumber: '201',
+              callUpNumber: '1',
               logistics: {
-                arrivalTime: '09:00',
-                warmupStart: '09:00',
-                warmupEnd: '09:30',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:50',
                 raceStart: '10:10',
               },
@@ -40,10 +41,11 @@ const sampleSchedule: TeamWaveSchedule = {
               firstName: 'Mike',
               lastName: 'Clark',
               bibNumber: '202',
+              callUpNumber: '1',
               logistics: {
-                arrivalTime: '09:00',
-                warmupStart: '09:00',
-                warmupEnd: '09:30',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:50',
                 raceStart: '10:10',
               },
@@ -60,10 +62,11 @@ const sampleSchedule: TeamWaveSchedule = {
               firstName: 'Sara',
               lastName: 'Evans',
               bibNumber: '301',
+              callUpNumber: '1',
               logistics: {
-                arrivalTime: '09:05',
-                warmupStart: '09:05',
-                warmupEnd: '09:35',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:55',
                 raceStart: '10:15',
               },
@@ -94,8 +97,9 @@ const multiWaveSchedule: TeamWaveSchedule = {
               firstName: 'Tom',
               lastName: 'Baker',
               bibNumber: '101',
+              callUpNumber: '1',
               logistics: {
-                arrivalTime: '07:00',
+                waveMeetingTime: '07:00',
                 warmupStart: '07:00',
                 warmupEnd: '07:30',
                 stagingTime: '07:40',
@@ -119,10 +123,11 @@ const multiWaveSchedule: TeamWaveSchedule = {
               firstName: 'Dave',
               lastName: 'Adams',
               bibNumber: '201',
+              callUpNumber: '1',
               logistics: {
-                arrivalTime: '09:00',
-                warmupStart: '09:00',
-                warmupEnd: '09:30',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:50',
                 raceStart: '10:10',
               },
@@ -131,10 +136,11 @@ const multiWaveSchedule: TeamWaveSchedule = {
               firstName: 'Mike',
               lastName: 'Clark',
               bibNumber: '202',
+              callUpNumber: '1',
               logistics: {
-                arrivalTime: '09:00',
-                warmupStart: '09:00',
-                warmupEnd: '09:30',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:50',
                 raceStart: '10:10',
               },
@@ -151,10 +157,11 @@ const multiWaveSchedule: TeamWaveSchedule = {
               firstName: 'Sara',
               lastName: 'Evans',
               bibNumber: '301',
+              callUpNumber: '1',
               logistics: {
-                arrivalTime: '09:05',
-                warmupStart: '09:05',
-                warmupEnd: '09:35',
+                waveMeetingTime: '09:10',
+                warmupStart: '09:10',
+                warmupEnd: '09:40',
                 stagingTime: '09:55',
                 raceStart: '10:15',
               },
@@ -197,8 +204,8 @@ describe('SheetsExportService', () => {
     it('includes column headers as the first row', () => {
       const { rows } = service.buildRows(sampleSchedule);
       expect(rows[0].values).toEqual([
-        'Wave', 'Category', 'Athlete Name', 'Bib #',
-        'Arrival', 'Warmup Start', 'Warmup End', 'Staging', 'Race Start', 'Laps',
+        'Wave', 'Category', 'Athlete Name', 'Staging #', 'Bib #',
+        'Wave Meeting', 'Warmup Start', 'Warmup End', 'Staging', 'Race Start', 'Laps',
       ]);
     });
 
@@ -217,12 +224,13 @@ describe('SheetsExportService', () => {
         'Wave 3 - HS',
         'Varsity Boys',
         'Dave Adams',
+        '1',
         '201',
-        '09:00',
-        '09:00',
-        '09:30',
-        '09:50',
-        '10:10',
+        '9:10 AM',
+        '9:10 AM',
+        '9:40 AM',
+        '9:50 AM',
+        '10:10 AM',
         4,
       ]);
     });
@@ -255,7 +263,7 @@ describe('SheetsExportService', () => {
                 startTime: '08:15',
                 laps: 2,
                 athletes: [
-                  { firstName: 'No', lastName: 'Logistics', bibNumber: '999' },
+                  { firstName: 'No', lastName: 'Logistics', bibNumber: '999', callUpNumber: null },
                 ],
               },
             ],
@@ -265,7 +273,7 @@ describe('SheetsExportService', () => {
       const { rows } = service.buildRows(scheduleWithoutLogistics);
       const athleteRow = rows[2]; // header + wave header + athlete
       expect(athleteRow.values).toEqual([
-        'Wave 1', 'Open', 'No Logistics', '999',
+        'Wave 1', 'Open', 'No Logistics', '', '999',
         '', '', '', '', '', 2,
       ]);
     });
@@ -287,8 +295,9 @@ describe('SheetsExportService', () => {
                     firstName: 'Test',
                     lastName: 'Athlete',
                     bibNumber: '100',
+                    callUpNumber: '1',
                     logistics: {
-                      arrivalTime: '07:15',
+                      waveMeetingTime: '07:15',
                       warmupStart: '07:15',
                       warmupEnd: '07:45',
                       stagingTime: '08:00',
@@ -303,7 +312,7 @@ describe('SheetsExportService', () => {
       };
       const { rows } = service.buildRows(scheduleNullLaps);
       const athleteRow = rows[2];
-      expect(athleteRow.values[9]).toBe('');
+      expect(athleteRow.values[10]).toBe('');
     });
   });
 
@@ -320,7 +329,7 @@ describe('SheetsExportService', () => {
       expect(rows).toHaveLength(5); // header + wave header + 3 athletes
       expect(formatting.headerRowCount).toBe(1);
       expect(formatting.waveHeaderRows).toEqual([1]);
-      expect(formatting.columnWidths).toHaveLength(10);
+      expect(formatting.columnWidths).toHaveLength(11);
     });
 
     it('returns the spreadsheet URL from the port', async () => {

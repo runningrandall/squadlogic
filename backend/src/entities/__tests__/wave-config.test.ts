@@ -49,13 +49,27 @@ describe('WaveConfigEntity', () => {
     expect(idx.pk.composite).toEqual([]);
   });
 
-  it('has createdAt default function', () => {
+  it('has createdAt default function returning ISO string', () => {
     const d = WaveConfigEntity.schema.attributes.createdAt.default;
     expect(typeof d).toBe('function');
     expect((d as () => string)()).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('has updatedAt set function', () => {
-    expect(typeof WaveConfigEntity.schema.attributes.updatedAt.set).toBe('function');
+  it('has createdAt set function returning ISO string', () => {
+    const s = WaveConfigEntity.schema.attributes.createdAt.set;
+    expect(typeof s).toBe('function');
+    expect((s as () => string)()).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('has updatedAt default function returning ISO string', () => {
+    const d = WaveConfigEntity.schema.attributes.updatedAt.default;
+    expect(typeof d).toBe('function');
+    expect((d as () => string)()).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('has updatedAt set function returning ISO string', () => {
+    const s = WaveConfigEntity.schema.attributes.updatedAt.set;
+    expect(typeof s).toBe('function');
+    expect((s as () => string)()).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });

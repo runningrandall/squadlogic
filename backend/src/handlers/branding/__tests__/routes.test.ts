@@ -122,11 +122,38 @@ describe('Branding routes', () => {
       });
       expect(res.statusCode).toBe(200);
     });
+
+    it('returns 400 when logoUrl is missing', async () => {
+      const res = await app.inject({
+        method: 'POST', url: '/branding/logo', headers,
+        payload: {},
+      });
+      expect(res.statusCode).toBe(400);
+    });
   });
 
   describe('DELETE /branding/logo', () => {
-    it('removes logo', async () => {
+    it('removes logo when branding has no logo URL', async () => {
+      // sampleBranding has logoUrl: null — S3 delete is skipped
       mockService.getBranding.mockResolvedValue(sampleBranding);
+      mockService.updateLogo.mockResolvedValue({ ...sampleBranding, logoUrl: null });
+      const res = await app.inject({ method: 'DELETE', url: '/branding/logo', headers });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('deletes from S3 when an existing logo URL is set', async () => {
+      const brandingWithLogo = {
+        ...sampleBranding,
+        logoUrl: 'https://switchback-team-logos-dev.s3.amazonaws.com/logos/user-1/abc.png',
+      };
+      mockService.getBranding.mockResolvedValue(brandingWithLogo);
+      mockService.updateLogo.mockResolvedValue({ ...sampleBranding, logoUrl: null });
+      const res = await app.inject({ method: 'DELETE', url: '/branding/logo', headers });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('handles case when no existing branding', async () => {
+      mockService.getBranding.mockResolvedValue(null);
       mockService.updateLogo.mockResolvedValue({ ...sampleBranding, logoUrl: null });
       const res = await app.inject({ method: 'DELETE', url: '/branding/logo', headers });
       expect(res.statusCode).toBe(200);

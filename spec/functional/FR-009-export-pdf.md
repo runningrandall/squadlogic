@@ -15,7 +15,7 @@ relationships:
 
 ## Description
 
-The system SHALL generate a downloadable PDF document from the enriched wave schedule (output of [FR-007](./FR-007-athlete-logistics-timeline.md)). The PDF SHALL apply the team's configured branding ([FR-011](./FR-011-team-branding.md)) including team name, logo, and primary/tertiary colors. The PDF SHALL be formatted for standard letter-size (8.5x11") printing.
+The system SHALL generate a downloadable PDF document from the enriched wave schedule (output of [FR-007](./FR-007-athlete-logistics-timeline.md)). The PDF SHALL apply the team's configured branding ([FR-011](./FR-011-team-branding.md)) including team name, logo, and primary/tertiary colors. The PDF SHALL be formatted for standard letter-size (8.5x11") printing. Each athlete row SHALL include a "Staging #" value — the athlete's call-up/staging order number as sourced from the uploaded call-up list ([FR-014](./FR-014-extract-callup-participants.md)).
 
 ## Inputs
 
@@ -27,7 +27,7 @@ The system SHALL generate a downloadable PDF document from the enriched wave sch
 
 - A downloadable PDF file containing:
   - Header: team logo (if configured), team name, event name, event date, event location
-  - Body: wave schedule table grouped by wave, then category, showing per-athlete logistics times (arrival, warmup start, warmup end, staging, race start)
+  - Body: wave schedule table grouped by wave, then category, showing each athlete's Staging # (call-up order number) and per-athlete logistics times (arrival, warmup start, warmup end, staging, race start)
   - Styling: primary color applied to header background and wave group headers, tertiary color applied to category sub-headers and table accents
 
 ## Behavior
@@ -36,7 +36,8 @@ The system SHALL generate a downloadable PDF document from the enriched wave sch
 - The system SHALL display the team name prominently in the header.
 - The system SHALL display the event name, date, and location below the team name.
 - The system SHALL render each wave as a distinct section with the wave name and start time range.
-- Within each wave section, the system SHALL render each category as a sub-table with columns: Athlete Name, Bib #, Arrival, Warmup Start, Warmup End, Staging, Race Start.
+- Within each wave section, the system SHALL render each category as a sub-table with columns: Athlete Name, Bib #, Staging #, Arrival, Warmup Start, Warmup End, Staging, Race Start.
+- The Staging # column SHALL display the athlete's call-up/staging order number as extracted from the uploaded call-up list; when no call-up number is available for an athlete, the cell SHALL be left blank.
 - The system SHALL apply the primary color to the header background and wave section headers.
 - The system SHALL apply the tertiary color to category sub-headers and alternating row accents.
 - When no branding is configured, the system SHALL use default styling (neutral gray header, no logo).
@@ -54,6 +55,7 @@ The system SHALL generate a downloadable PDF document from the enriched wave sch
 | FR-009-AC-6 | Given no branding configured, the PDF uses default neutral styling with no logo | Test |
 | FR-009-AC-7 | The PDF is formatted for letter-size (8.5x11") printing with readable font sizes | Inspection |
 | FR-009-AC-8 | The downloaded file is named `{teamName}_{eventDate}_schedule.pdf` | Test |
+| FR-009-AC-9 | Each athlete row includes a Staging # value taken from the athlete's call-up number in the uploaded call-up list | Test |
 
 ## Dependencies
 

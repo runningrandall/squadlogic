@@ -11,7 +11,6 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as path from 'node:path';
 import type { Construct } from 'constructs';
 
@@ -34,7 +33,6 @@ export class InfraStack extends cdk.Stack {
   public readonly api: apigwv2.HttpApi;
   public readonly logoBucket: s3.Bucket;
   public readonly googleApiSecret: secretsmanager.Secret;
-  public readonly wafWebAcl: wafv2.CfnWebACL;
 
   constructor(scope: Construct, id: string, props: InfraStackProps) {
     super(scope, id, props);
@@ -47,11 +45,12 @@ export class InfraStack extends cdk.Stack {
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl',
       removalPolicy:
         stageName === 'dev'
           ? cdk.RemovalPolicy.DESTROY
           : cdk.RemovalPolicy.RETAIN,
-      pointInTimeRecovery: stageName !== 'dev',
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: stageName !== 'dev' },
     });
 
     this.table.addGlobalSecondaryIndex({
@@ -108,9 +107,9 @@ export class InfraStack extends cdk.Stack {
             s3.HttpMethods.DELETE,
           ],
           allowedOrigins:
-            stageName === 'dev'
-              ? ['http://localhost:3000']
-              : [`https://*.cloudfront.net`],
+            stageName === 'prod'
+              ? [`https://${props.domainName}`]
+              : ['http://localhost:3000', `https://${stageName}.${props.domainName}`],
           exposedHeaders: ['ETag'],
           maxAge: 3600,
         },
@@ -154,57 +153,6 @@ export class InfraStack extends cdk.Stack {
       },
     );
 
-    // WAF WebACL with rate limiting for RaceResult import endpoint
-    this.wafWebAcl = new wafv2.CfnWebACL(this, 'ApiWafWebAcl', {
-      name: `TeamManager-WAF-${stageName}`,
-      defaultAction: { allow: {} },
-      scope: 'REGIONAL',
-      visibilityConfig: {
-        cloudWatchMetricsEnabled: true,
-        metricName: `TeamManager-WAF-${stageName}`,
-        sampledRequestsEnabled: true,
-      },
-      rules: [
-        {
-          name: 'RaceResultImportRateLimit',
-          priority: 1,
-          action: {
-            block: {
-              customResponse: {
-                responseCode: 429,
-              },
-            },
-          },
-          statement: {
-            rateBasedStatement: {
-              limit: 100,
-              aggregateKeyType: 'IP',
-              scopeDownStatement: {
-                byteMatchStatement: {
-                  searchString: '/race-events/import',
-                  fieldToMatch: {
-                    uriPath: {},
-                  },
-                  textTransformations: [
-                    {
-                      priority: 0,
-                      type: 'LOWERCASE',
-                    },
-                  ],
-                  positionalConstraint: 'STARTS_WITH',
-                },
-              },
-            },
-          },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: `RaceResultImportRateLimit-${stageName}`,
-            sampledRequestsEnabled: true,
-          },
-        },
-      ],
-    });
-
     // ── Lambda Function (Fastify backend) ──
     const backendFn = new NodejsFunction(this, 'BackendFn', {
       functionName: `TeamManager-API-${stageName}`,
@@ -220,6 +168,10 @@ export class InfraStack extends cdk.Stack {
         banner:
           "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
         externalModules: ['@aws-sdk/*'],
+        // pdfkit uses __dirname to resolve built-in font files (e.g. Helvetica.afm).
+        // Bundling it into the ESM output loses __dirname, so we install it as a
+        // real node_modules package where Node's CJS loader provides __dirname correctly.
+        nodeModules: ['pdfkit'],
       },
       environment: {
         NODE_ENV: 'production',
@@ -344,11 +296,6 @@ export class InfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'GoogleApiSecretArn', {
       value: this.googleApiSecret.secretArn,
       description: 'Secrets Manager ARN for Google API credentials',
-    });
-
-    new cdk.CfnOutput(this, 'WafWebAclArn', {
-      value: this.wafWebAcl.attrArn,
-      description: 'WAF WebACL ARN for API rate limiting',
     });
   }
 }

@@ -57,6 +57,19 @@ describe('CoachDynamoRepository', () => {
       expect(result).toEqual(mockCoach);
     });
 
+    it('creates coach without certifications/specialties/phone (uses ?? defaults)', async () => {
+      const noDefaults = {
+        coachId: 'coach-789',
+        organizationId: 'org-123',
+        firstName: 'Bob',
+        lastName: 'Brown',
+        email: 'bob@example.com',
+      };
+      mockGo.mockResolvedValueOnce({ data: mockCoach });
+      await repo.create(noDefaults as any);
+      expect(CoachEntity.create).toHaveBeenCalled();
+    });
+
     it('creates coach with minimal fields (no optional values)', async () => {
       const minimalCoach = {
         coachId: 'coach-456',

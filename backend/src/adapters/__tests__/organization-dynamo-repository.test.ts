@@ -60,6 +60,13 @@ describe('OrganizationDynamoRepository', () => {
       expect(OrganizationEntity.create).toHaveBeenCalled();
       expect(result).toEqual(mockOrg);
     });
+
+    it('creates org without config (uses {} default)', async () => {
+      const { config: _, ...noConfig } = mockOrg;
+      mockGo.mockResolvedValueOnce({ data: mockOrg });
+      await repo.create(noConfig as any);
+      expect(OrganizationEntity.create).toHaveBeenCalled();
+    });
   });
 
   describe('getById', () => {
