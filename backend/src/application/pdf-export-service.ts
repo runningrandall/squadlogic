@@ -1,5 +1,6 @@
 import type { TeamWaveSchedule, WaveGroup, WaveScheduleEntry } from '../domain/race-event.js';
 import { formatTime12Hour } from '../lib/time-format.js';
+import { stripCategorySplitSuffix } from '../lib/category-split.js';
 
 export interface PdfBranding {
   teamDisplayName: string;
@@ -238,6 +239,20 @@ export class PdfExportService {
     );
     const totalRows = blocks.reduce((s, b) => s + b.rows.length, 0);
 
+    // A category's splits ("<Category> Split N") often sit in different waves, so they'd be
+    // packed as unrelated blocks and could land in different columns. Bundle every split of a
+    // category (per race day) into one unit, placed where its first split appears, so the whole
+    // category always stays together in one column.
+    const unitKeys = schedule.waves.flatMap((wave) =>
+      wave.categories.map((cat) => `${wave.date ?? ''}|${stripCategorySplitSuffix(cat.categoryName)}`),
+    );
+    const unitsByKey = new Map<string, RosterCategoryBlock[]>();
+    blocks.forEach((block, i) => {
+      if (!unitsByKey.has(unitKeys[i])) unitsByKey.set(unitKeys[i], []);
+      unitsByKey.get(unitKeys[i])!.push(block);
+    });
+    const units = [...unitsByKey.values()];
+
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'TABLOID', layout: 'landscape',
@@ -249,7 +264,7 @@ export class PdfExportService {
       doc.on('error', reject);
 
       this.renderPageHeader(pm, doc, schedule, brand, logoBuffer, eventLocation);
-      this.renderRosterTable(pm, doc, blocks, totalRows, brand);
+      this.renderRosterTable(pm, doc, units, totalRows, brand);
 
       doc.end();
     });
@@ -528,6 +543,11 @@ export class PdfExportService {
       const wave = item.wave;
       const firstCat = wave.categories[0];
       const logistics = firstCat?.athletes[0]?.logistics;
+      // A split may borrow an earlier split's (earlier) wave meeting, so the wave's own meeting
+      // is the latest one among its categories rather than whatever the first category shows.
+      const waveMeetingTime = wave.categories
+        .map((c) => c.athletes[0]?.logistics?.waveMeetingTime ?? '')
+        .reduce((latest, t) => (t > latest ? t : latest), '');
       const categoryList = wave.categories.map((c) => c.categoryName).join(' / ');
       const athleteCount = wave.categories.reduce((s, c) => s + c.athletes.length, 0);
 
@@ -569,7 +589,7 @@ export class PdfExportService {
       const rowVals = [
         waveLabel,
         categoryList,
-        logistics?.waveMeetingTime ? formatTime12Hour(logistics.waveMeetingTime) : '—',
+        waveMeetingTime ? formatTime12Hour(waveMeetingTime) : '—',
         logistics?.warmupStart ? formatTime12Hour(logistics.warmupStart) : '—',
         firstCat?.athletes[0]?.logistics?.stagingTime
           ? formatTime12Hour(firstCat.athletes[0].logistics.stagingTime) : '—',
@@ -740,10 +760,11 @@ export class PdfExportService {
 
   // ─── Check-in roster table: category blocks flowed down N side-by-side ────
   // ─── columns (newspaper order), sized to fit one page ──────────────────────
+  // Each unit is one category's blocks (all of its splits), packed as a whole.
   private renderRosterTable(
     pm: PageMetrics,
     doc: PDFKit.PDFDocument,
-    blocks: RosterCategoryBlock[],
+    units: RosterCategoryBlock[][],
     totalRows: number,
     brand: PdfBranding,
   ): void {
@@ -754,7 +775,7 @@ export class PdfExportService {
 
     const tableTop = doc.y;
     const availH = pm.PH - 20 - tableTop;
-    if (totalRows === 0 || blocks.length === 0) return;
+    if (totalRows === 0 || units.length === 0) return;
 
     // Column count steps up (4 → 5 → 6) only once the smallest row height still can't fit every
     // category in fewer columns, so the roster stays on one page however many waves there are.
@@ -768,24 +789,25 @@ export class PdfExportService {
     const CAT_HDR_H = 28;
     const perColBudget = availH - HDR_ROW_H;
 
-    // Greedy contiguous fill: whole category blocks accumulate into the current column until
+    // Greedy contiguous fill: whole category units accumulate into the current column until
     // the next one would overflow the FULL column height (not an even fraction of it) — a
     // column is only ever closed because it's actually full, so unlike splitting content into
     // a fixed number of even shares up front, this can't silently pile every leftover category
     // into one column while others sit mostly empty.
     const packColumns = (rowH: number): RosterCategoryBlock[][] => {
-      const blockHeight = (b: RosterCategoryBlock) => CAT_HDR_H + b.rows.length * rowH;
+      const unitHeight = (u: RosterCategoryBlock[]) =>
+        u.reduce((s, b) => s + CAT_HDR_H + b.rows.length * rowH, 0);
       const cols: RosterCategoryBlock[][] = [];
       let currentCol: RosterCategoryBlock[] = [];
       let currentH = 0;
-      for (const block of blocks) {
-        const h = blockHeight(block);
+      for (const unit of units) {
+        const h = unitHeight(unit);
         if (currentCol.length > 0 && currentH + h > perColBudget) {
           cols.push(currentCol);
           currentCol = [];
           currentH = 0;
         }
-        currentCol.push(block);
+        currentCol.push(...unit);
         currentH += h;
       }
       if (currentCol.length > 0) cols.push(currentCol);

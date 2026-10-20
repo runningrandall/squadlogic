@@ -93,3 +93,17 @@ export async function getPdfPageText(buffer: Buffer, pageNum: number): Promise<s
   const content = await page.getTextContent();
   return content.items.map((item) => ('str' in item ? item.str : '')).join(' ');
 }
+
+// Every rendered text run on one page with its x/y origin (PDF user space) — lets a test
+// assert layout, e.g. that two headers were drawn in the same column (same x).
+export async function getPdfTextPositions(
+  buffer: Buffer,
+  pageNum = 1,
+): Promise<{ str: string; x: number; y: number }[]> {
+  const doc = await loadPdf(buffer);
+  const page = await doc.getPage(pageNum);
+  const content = await page.getTextContent();
+  return content.items.flatMap((item) =>
+    'str' in item ? [{ str: item.str, x: item.transform[4] as number, y: item.transform[5] as number }] : [],
+  );
+}

@@ -288,6 +288,27 @@ describe('PdfExportService', () => {
     expect(summaryText).not.toContain('Wave 7 - JD');
   });
 
+  it('summary WAVE MTG shows the wave\'s own meeting even when its first category is a split sharing an earlier meeting', async () => {
+    const withLogistics = (waveMeetingTime: string, startTime: string) => ({
+      firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1', calledUp: false,
+      logistics: { waveMeetingTime, warmupStart: '09:40', warmupEnd: '10:10', stagingTime: '10:15', raceStart: startTime },
+    });
+    const buffer = await service.generatePdf({
+      ...schedule,
+      waves: [{
+        waveName: 'Wave 6', waveNumber: 6, day: null, date: '2026-08-22',
+        categories: [
+          // A split borrowing Split 1's 9:00 meeting sorts first; the wave itself meets at 9:30.
+          { categoryName: 'Beginner Boys Split 2', stageTime: '10:15', startTime: '10:30', laps: 1, athletes: [withLogistics('09:00', '10:30')] },
+          { categoryName: 'Freshman Girls', stageTime: '10:15', startTime: '10:30', laps: 1, athletes: [withLogistics('09:30', '10:30')] },
+        ],
+      }],
+    });
+    const summaryText = await getPdfPageText(buffer, 1);
+    expect(summaryText).toContain('9:30 AM');
+    expect(summaryText).not.toContain('9:00 AM');
+  });
+
   it('does not truncate the RACE START header with an ellipsis', async () => {
     const buffer = await service.generatePdf(schedule);
     const summaryText = await getPdfPageText(buffer, 1);

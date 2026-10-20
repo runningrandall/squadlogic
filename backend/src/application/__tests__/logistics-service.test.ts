@@ -186,6 +186,65 @@ describe('LogisticsService', () => {
       expect(wave2Meeting).toBe('09:10'); // 10:10 - 60
     });
 
+    describe('splits share a wave meeting', () => {
+      const athlete = { firstName: 'A', lastName: 'B', bibNumber: '1', callUpNumber: '1', calledUp: false };
+      const cat = (categoryName: string, startTime: string) => ({ categoryName, stageTime: '', startTime, laps: 1, athletes: [athlete] });
+      const wave = (waveName: string, date: string, ...categories: ReturnType<typeof cat>[]) =>
+        ({ waveName, waveNumber: 1, day: null, date, categories });
+      const logisticsOf = (s: TeamWaveSchedule, w: number, c = 0) => s.waves[w].categories[c].athletes[0].logistics!;
+
+      it('a later split within 90 min attends the first split\'s wave meeting; its own times stay distinct', () => {
+        const enriched = service.enrichSchedule({
+          ...schedule,
+          waves: [
+            wave('Wave 5', '2026-08-22', cat('Beginner Boys Split 1', '10:00')),
+            wave('Wave 6', '2026-08-22', cat('Freshman Girls', '10:30'), cat('Beginner Boys Split 2', '10:30')),
+          ],
+        });
+        const split1 = logisticsOf(enriched, 0);
+        const freshman = logisticsOf(enriched, 1, 0);
+        const split2 = logisticsOf(enriched, 1, 1);
+
+        expect(split1.waveMeetingTime).toBe('09:00');
+        expect(split2.waveMeetingTime).toBe('09:00'); // shared with Split 1, not its wave's 09:30
+        expect(freshman.waveMeetingTime).toBe('09:30'); // non-split category keeps its wave's meeting
+
+        expect(split2.warmupStart).toBe('09:40'); // own wave: 10:30 - 60 + 10
+        expect(split2.warmupEnd).toBe('10:10');
+        expect(split2.stagingTime).toBe('10:15');
+        expect(split2.raceStart).toBe('10:30');
+        expect(split1.warmupStart).toBe('09:10');
+      });
+
+      it('a split exactly 90 min after the first still shares; 91 min starts a new meeting', () => {
+        const enriched = service.enrichSchedule({
+          ...schedule,
+          waves: [
+            wave('Wave 1', '2026-08-22', cat('JV Boys Split 1', '08:00')),
+            wave('Wave 2', '2026-08-22', cat('JV Boys Split 2', '09:30')),
+            wave('Wave 3', '2026-08-22', cat('JV Boys Split 3', '09:31')),
+            wave('Wave 4', '2026-08-22', cat('JV Boys Split 4', '10:40')),
+          ],
+        });
+        expect(logisticsOf(enriched, 0).waveMeetingTime).toBe('07:00');
+        expect(logisticsOf(enriched, 1).waveMeetingTime).toBe('07:00');
+        expect(logisticsOf(enriched, 2).waveMeetingTime).toBe('08:31'); // new group anchored on Split 3
+        expect(logisticsOf(enriched, 3).waveMeetingTime).toBe('08:31'); // 69 min after Split 3
+      });
+
+      it('splits on different race days never share a meeting', () => {
+        const enriched = service.enrichSchedule({
+          ...schedule,
+          waves: [
+            wave('Day 1 Wave 1', '2026-08-22', cat('JV Boys Split 1', '08:00')),
+            wave('Day 2 Wave 1', '2026-08-23', cat('JV Boys Split 2', '08:30')),
+          ],
+        });
+        expect(logisticsOf(enriched, 0).waveMeetingTime).toBe('07:00');
+        expect(logisticsOf(enriched, 1).waveMeetingTime).toBe('07:30');
+      });
+    });
+
     it('JD waves use the standard earliest-start-60 formula, same as every other wave', () => {
       // Each JD wave publishes its own meeting time on the league schedule (lehimtb.com/race-day) —
       // Wave 7/8/9 are not a single shared 1pm head-coach meeting.

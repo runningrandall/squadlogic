@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PdfExportService } from '../pdf-export-service.js';
-import { getPdfPageCount, getPdfText } from './pdf-test-utils.js';
+import { getPdfPageCount, getPdfText, getPdfTextPositions } from './pdf-test-utils.js';
 import type { TeamWaveSchedule, ScheduleAthlete } from '../../domain/race-event.js';
 
 const service = new PdfExportService();
@@ -266,6 +266,41 @@ describe('PdfExportService.generateRosterPdf', () => {
     const text = await getPdfText(await service.generateRosterPdf(manyCategoriesSchedule));
     expect(text).toContain('Category 0');
     expect(text).toContain('Category 19');
+  });
+
+  it('keeps every split of a category in one column even when the splits sit in different waves', async () => {
+    const cat = (name: string, count: number, start: string) => ({
+      categoryName: name,
+      stageTime: start, startTime: start, laps: 1,
+      athletes: Array.from({ length: count }, (_, i) => mkAthlete(`${name}F${i}`, `L${i}`, String(i))),
+    });
+    // Split 1 opens wave 1, then enough filler waves to fill several columns, then Split 2 in
+    // the last wave — packed in plain wave order, Split 2 would land columns away from Split 1.
+    const splitSchedule: TeamWaveSchedule = {
+      teamName: 'Wasatch',
+      eventName: 'UTAH HS MTB 2026 - Region 5',
+      eventDate: '2026-08-22',
+      totalAthletes: 0,
+      waves: [
+        { waveName: 'Wave 1', categories: [cat('Beginner Boys Split 1', 4, '08:00')] },
+        ...Array.from({ length: 6 }, (_, w) => ({
+          waveName: `Wave ${w + 2}`,
+          categories: Array.from({ length: 3 }, (_, c) => cat(`Filler ${w}-${c}`, 6, '09:00')),
+        })),
+        { waveName: 'Wave 8', categories: [cat('Beginner Boys Split 2', 4, '09:20')] },
+      ],
+    };
+
+    const items = await getPdfTextPositions(await service.generateRosterPdf(splitSchedule));
+    const header = (prefix: string) => items.find((i) => i.str.startsWith(prefix));
+    const split1 = header('Beginner Boys Split 1');
+    const split2 = header('Beginner Boys Split 2');
+    const lastFiller = header('Filler 5-2');
+    expect(split1).toBeDefined();
+    expect(split2).toBeDefined();
+    expect(split2!.x).toBe(split1!.x);
+    // Filler fills more than one column, so the last filler is in a later column than the splits.
+    expect(lastFiller!.x).toBeGreaterThan(split1!.x);
   });
 
   it('shows MTG/STAGE/START once in the category header instead of once per athlete row', async () => {
