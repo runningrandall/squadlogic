@@ -119,11 +119,11 @@ describe('PdfExportService — multi-day race (State Champs)', () => {
   });
 
   describe('pocket', () => {
-    it('puts Day 1 on one sheet and Day 2 on the other', async () => {
+    it('puts Day 1 on the front and Day 2 on the back, with no blank pages', async () => {
       const buffer = await service.generatePocketPdf(stateSchedule());
-      expect(await getPdfPageCount(buffer)).toBe(4);
-      const day1 = (await getPdfPageText(buffer, 1)) + (await getPdfPageText(buffer, 2));
-      const day2 = (await getPdfPageText(buffer, 3)) + (await getPdfPageText(buffer, 4));
+      expect(await getPdfPageCount(buffer)).toBe(2);
+      const day1 = await getPdfPageText(buffer, 1);
+      const day2 = await getPdfPageText(buffer, 2);
       for (let w = 1; w <= 6; w++) {
         expect(day1).toContain(`Day 1 Wave ${w}`);
         expect(day2).toContain(`Day 2 Wave ${w}`);

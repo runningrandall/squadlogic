@@ -50,10 +50,11 @@ const schedule: TeamWaveSchedule = {
 };
 
 describe('PdfExportService.generatePocketPdf', () => {
-  it('generates a valid two-page (double-sided) Letter PDF for a small team', async () => {
+  it('generates a single-page Letter PDF when a small team fits on one side', async () => {
     const buffer = await service.generatePocketPdf(schedule);
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
-    expect(await getPdfPageCount(buffer)).toBe(2);
+    // No blank back page: only pages with panels on them are emitted.
+    expect(await getPdfPageCount(buffer)).toBe(1);
   });
 
   it('includes every athlete somewhere in the document', async () => {
@@ -176,14 +177,14 @@ describe('PdfExportService.generatePocketPdf', () => {
     };
     const oneWaveSchedule: TeamWaveSchedule = { ...schedule, waves: [multiCatWave] };
     const buffer = await service.generatePocketPdf(oneWaveSchedule);
-    // A single wave should never need more than one sheet (2 pages).
-    expect(await getPdfPageCount(buffer)).toBe(2);
+    // A single wave fits in one panel, so one page.
+    expect(await getPdfPageCount(buffer)).toBe(1);
     const text = await getPdfText(buffer);
     expect(text).toContain('JV B Boys');
     expect(text).toContain('JV C Boys');
   });
 
-  it('spills onto an additional sheet once more than 8 panels are needed', async () => {
+  it('spills onto additional pages as panels are needed, without trailing blank pages', async () => {
     // 25 riders in a single category fill most of a panel, so no two of these waves can share one.
     const manyWaves = Array.from({ length: 9 }, (_, i) => ({
       waveName: `Wave ${i + 1} - HS`,
@@ -194,8 +195,8 @@ describe('PdfExportService.generatePocketPdf', () => {
     }));
     const manyWaveSchedule: TeamWaveSchedule = { ...schedule, waves: manyWaves };
     const buffer = await service.generatePocketPdf(manyWaveSchedule);
-    // 9 panels > 8 panels/sheet, so this needs a second double-sided sheet (4 pages).
-    expect(await getPdfPageCount(buffer)).toBe(4);
+    // 9 panels at 4 per page = 3 pages — not padded out to a 4th blank page.
+    expect(await getPdfPageCount(buffer)).toBe(3);
   });
 
   it('stacks several small waves in one panel to use its vertical space', async () => {
@@ -207,11 +208,11 @@ describe('PdfExportService.generatePocketPdf', () => {
       ],
     }));
     const buffer = await service.generatePocketPdf({ ...schedule, waves: smallWaves });
-    // One wave per panel would have pushed Wave 5 onto the back (page 2); packed, all five
-    // share the front page.
+    // One wave per panel would have pushed Wave 5 onto a second page; packed, all five
+    // share the front page and no second page is needed.
     const front = await getPdfPageText(buffer, 1);
     for (let i = 1; i <= 5; i++) expect(front).toContain(`Wave ${i}`);
-    expect(await getPdfPageText(buffer, 2)).not.toContain('Wave');
+    expect(await getPdfPageCount(buffer)).toBe(1);
   });
 
   it('never splits a wave across panels: one that does not fit below the others starts the next panel', async () => {
@@ -225,10 +226,10 @@ describe('PdfExportService.generatePocketPdf', () => {
     // with all of its riders present, not cut off at the bottom of Alpha's panel.
     const text = await getPdfText(buffer);
     expect(text).toContain('Bravo14 X');
-    expect(await getPdfPageCount(buffer)).toBe(2);
+    expect(await getPdfPageCount(buffer)).toBe(1);
   });
 
-  it('starts each day of a multi-day race on its own physical sheet', async () => {
+  it('starts each day of a multi-day race on its own page', async () => {
     const dayWave = (day: number, n: number) => ({
       waveName: `Day ${day} Wave ${n}`, waveNumber: n, day, date: `2026-10-2${2 + day}`,
       categories: [{ categoryName: `D${day}W${n}`, stageTime: '08:00', startTime: '08:15', laps: 1,
@@ -240,14 +241,14 @@ describe('PdfExportService.generatePocketPdf', () => {
       waves: [dayWave(1, 1), dayWave(1, 2), dayWave(2, 1)],
     };
     const buffer = await service.generatePocketPdf(twoDay);
-    // Day 1 = sheet 1 (pages 1-2), Day 2 = sheet 2 (pages 3-4), even though all three tiny
-    // waves would otherwise fit in a single panel.
-    expect(await getPdfPageCount(buffer)).toBe(4);
+    // Day 1 = page 1, Day 2 = page 2 (the back side), even though all three tiny waves
+    // would otherwise fit in a single panel — and no blank pages padding either day.
+    expect(await getPdfPageCount(buffer)).toBe(2);
     const page1 = await getPdfPageText(buffer, 1);
     expect(page1).toContain('Day 1 Wave 1');
     expect(page1).toContain('Day 1 Wave 2');
     expect(page1).not.toContain('Day 2');
-    expect(await getPdfPageText(buffer, 3)).toContain('Day 2 Wave 1');
+    expect(await getPdfPageText(buffer, 2)).toContain('Day 2 Wave 1');
   });
 
   it('breaks ties by last name when two athletes in a category share a first name', async () => {
@@ -272,7 +273,7 @@ describe('PdfExportService.generatePocketPdf', () => {
     const emptySchedule: TeamWaveSchedule = { ...schedule, totalAthletes: 0, waves: [] };
     const buffer = await service.generatePocketPdf(emptySchedule);
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
-    expect(await getPdfPageCount(buffer)).toBe(2);
+    expect(await getPdfPageCount(buffer)).toBe(1);
   });
 
   it('gives two different waves\' single category a distinct header color, not the same one', async () => {

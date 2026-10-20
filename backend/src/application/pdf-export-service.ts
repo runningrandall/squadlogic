@@ -282,7 +282,8 @@ export class PdfExportService {
     // height, so panels use their vertical space instead of leaving a small wave alone on half
     // an empty panel. A wave is never split across panels; one too tall for a panel on its own
     // gets a panel to itself and shrinks its rows to fit. A multi-day race (e.g. State) starts
-    // each day on its own physical sheet, so riders carry just that day's card.
+    // each day on its own page (sheet side), so no panel mixes two days. Only whole pages are
+    // emitted — a day that fits on one side doesn't drag along a blank back page.
     const waveGroups = this.buildPocketWaveGroups(schedule);
     const multiDay = waveGroups.some((w) => w.day != null);
     const dayGroups: PocketWaveGroup[][] = [];
@@ -292,15 +293,12 @@ export class PdfExportService {
       else dayGroups.push([wave]);
     }
 
-    const panelsPerSheet = PANELS_PER_SHEET * 2;
     const panels: (PocketWaveGroup[] | null)[] = [];
     for (const group of dayGroups) {
       panels.push(...this.packPocketPanels(group));
-      while (panels.length % panelsPerSheet !== 0) panels.push(null);
+      while (panels.length % PANELS_PER_SHEET !== 0) panels.push(null);
     }
-    if (panels.length === 0) panels.push(null);
-    const sheets = Math.max(1, Math.ceil(panels.length / panelsPerSheet));
-    while (panels.length < sheets * panelsPerSheet) panels.push(null);
+    const pages = Math.max(1, panels.length / PANELS_PER_SHEET);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
@@ -312,14 +310,9 @@ export class PdfExportService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      let panelIdx = 0;
-      for (let s = 0; s < sheets; s++) {
-        if (s > 0) doc.addPage();
-        this.renderPocketPage(doc, panels.slice(panelIdx, panelIdx + PANELS_PER_SHEET), brand);
-        panelIdx += PANELS_PER_SHEET;
-        doc.addPage();
-        this.renderPocketPage(doc, panels.slice(panelIdx, panelIdx + PANELS_PER_SHEET), brand);
-        panelIdx += PANELS_PER_SHEET;
+      for (let p = 0; p < pages; p++) {
+        if (p > 0) doc.addPage();
+        this.renderPocketPage(doc, panels.slice(p * PANELS_PER_SHEET, (p + 1) * PANELS_PER_SHEET), brand);
       }
 
       doc.end();
